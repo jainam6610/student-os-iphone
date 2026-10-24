@@ -125,7 +125,11 @@ export const createProgressSlice = (set: any, get: any, _api?: any): ProgressSli
     const rawScore = (focusConsistency * 0.25 + taskCompletion * 0.2 + habitCompletion * 0.15 + studyHours * 0.2 + goalCompletion * 0.2) * (1 - latePenalty / 100)
     const score = Math.round(Math.min(Math.max(rawScore, 0), 100))
     const weekStr = format(new Date(), 'yyyy-ww')
-    const weeklyHistory = [...state.productivityScore.weeklyHistory.slice(-51), { week: weekStr, score }]
+    // This now runs on every habit check-in, so rewrite the current week instead
+    // of appending a duplicate entry that would push real weeks out of history.
+    const previousWeeks = (state.productivityScore.weeklyHistory as Array<{ week: string; score: number }>)
+      .filter((entry) => entry.week !== weekStr)
+    const weeklyHistory = [...previousWeeks.slice(-51), { week: weekStr, score }]
     return {
       productivityScore: {
         score, focusConsistency: Math.round(focusConsistency), taskCompletion: Math.round(taskCompletion),

@@ -8,6 +8,33 @@ import { DEFAULT_HABIT_SETTINGS } from '../../habits/types'
 import { getTodayStr, calculateStreak, calculateLongestStreak, calculateCompletionRate } from '../../habits/utils'
 import type { Habit } from '../types'
 
+/**
+ * Atomic Habits — "make it satisfying": a check-in has to pay out right away.
+ * 15 XP matches a low-priority task (task-slice) so both tabs share one economy.
+ */
+const HABIT_CHECKIN_XP = 15
+
+/**
+ * Stored completion dates can be "yyyy-MM-dd" or a full ISO timestamp depending
+ * on how old the record is. Normalising here keeps `includes()` checks and the
+ * streak maths from silently missing days (or double-counting them).
+ */
+function normalizeCompletedDates(dates: unknown): string[] {
+  if (!Array.isArray(dates)) return []
+  const keys = new Set<string>()
+  for (const value of dates) {
+    if (typeof value === 'string') {
+      const key = value.split('T')[0]
+      if (/^\d{4}-\d{2}-\d{2}$/.test(key)) keys.add(key)
+      continue
+    }
+    if (value instanceof Date && !Number.isNaN(value.getTime())) {
+      keys.add(format(value, 'yyyy-MM-dd'))
+    }
+  }
+  return Array.from(keys)
+}
+
 export interface HabitSlice {
   habits: Habit[]
   addHabit: (habit: Omit<Habit, 'id' | 'completedDates' | 'streak' | 'bestStreak' | 'createdAt'>) => void
@@ -85,18 +112,23 @@ export const createHabitSlice = (set: any, get: any, _api?: any): HabitSlice => 
     await syncHabitAlarms(get().habits)
   },
   completeHabit: async (id, date) => {
+    const targetDate = date || getTodayStr()
+    const current = get().habits.find((h: Habit) => h.id === id)
+    if (!current) return
+    const alreadyDone = normalizeCompletedDates(current.completedDates).includes(targetDate)
+
     set((state: any) => ({
       habits: state.habits.map((h: Habit) => {
         if (h.id !== id) return h
-        const targetDate = date || getTodayStr()
-        if (h.completedDates.includes(targetDate)) return h
-        const newDates = [...h.completedDates, targetDate]
+        const existing = normalizeCompletedDates(h.completedDates)
+        if (existing.includes(targetDate)) return h
+        const newDates = [...existing, targetDate].sort()
         const newHistory = [...(h.history || []), { date: targetDate, action: 'completed' as const, timestamp: new Date() }]
         const streak = calculateStreak(newDates)
         return {
           ...h,
           completedDates: newDates,
-          completedCount: (h.completedCount || 0) + 1,
+          completedCount: newDates.length,
           currentStreak: streak,
           streak,
           longestStreak: Math.max(h.longestStreak ?? h.bestStreak ?? 0, streak),
@@ -107,29 +139,49 @@ export const createHabitSlice = (set: any, get: any, _api?: any): HabitSlice => 
         }
       }),
     }))
+
+    // Idempotent, like completeTask: no payout for a no-op check-in.
+    if (!alreadyDone) {
+      get().addXP(HABIT_CHECKIN_XP)
+      try { get().checkAchievements() } catch {}
+      try { get().recalculateProductivityScore() } catch {}
+    }
     await syncHabitAlarms(get().habits)
     await dismissAlarm()
   },
-  undoCompleteHabit: (id, date) => set((state: any) => ({
-    habits: state.habits.map((h: Habit) => {
-      if (h.id !== id) return h
-      const targetDate = date || getTodayStr()
-      if (!h.completedDates.includes(targetDate)) return h
-      const newDates = h.completedDates.filter((d: string) => d !== targetDate)
-      const newHistory = [...(h.history || []), { date: targetDate, action: 'undone' as const, timestamp: new Date() }]
-      const streak = calculateStreak(newDates)
-      return {
-        ...h,
-        completedDates: newDates,
-        completedCount: Math.max(0, (h.completedCount ?? 1) - 1),
-        currentStreak: streak,
-        streak,
-        completionRate: calculateCompletionRate(newDates),
-        history: newHistory,
-        updatedAt: new Date(),
-      }
-    }),
-  })),
+  undoCompleteHabit: (id, date) => {
+    const targetDate = date || getTodayStr()
+    const current = get().habits.find((h: Habit) => h.id === id)
+    const wasDone = current ? normalizeCompletedDates(current.completedDates).includes(targetDate) : false
+
+    set((state: any) => ({
+      habits: state.habits.map((h: Habit) => {
+        if (h.id !== id) return h
+        const existing = normalizeCompletedDates(h.completedDates)
+        if (!existing.includes(targetDate)) return h
+        const newDates = existing.filter((d: string) => d !== targetDate)
+        const newHistory = [...(h.history || []), { date: targetDate, action: 'undone' as const, timestamp: new Date() }]
+        const streak = calculateStreak(newDates)
+        return {
+          ...h,
+          completedDates: newDates,
+          completedCount: newDates.length,
+          currentStreak: streak,
+          streak,
+          completionRate: calculateCompletionRate(newDates),
+          history: newHistory,
+          updatedAt: new Date(),
+        }
+      }),
+    }))
+
+    // Undo has to take the XP back, otherwise toggling is an infinite XP farm.
+    if (wasDone) {
+      get().addXP(-HABIT_CHECKIN_XP)
+      try { get().checkAchievements() } catch {}
+      try { get().recalculateProductivityScore() } catch {}
+    }
+  },
   skipHabit: (id, reason, date) => set((state: any) => ({
     habits: state.habits.map((h: Habit) => {
       if (h.id !== id) return h
@@ -158,27 +210,34 @@ export const createHabitSlice = (set: any, get: any, _api?: any): HabitSlice => 
     }))
     await syncHabitAlarms(get().habits)
   },
-  restoreHabit: (id) => set((state: any) => ({
-    habits: state.habits.map((h: Habit) => h.id === id ? { ...h, archived: false, archivedAt: undefined, updatedAt: new Date() } : h),
-  })),
-  duplicateHabit: (id) => set((state: any) => {
-    const original = state.habits.find((h: Habit) => h.id === id)
-    if (!original || state.habits.length >= MAX_HABITS) return state
-    const now = new Date()
-    const copy: Habit = {
-      ...original as any,
-      id: generateId(),
-      name: `${original.name} (Copy)`,
-      completedDates: [],
-      skippedDates: [],
-      streak: 0, bestStreak: 0, currentStreak: 0, longestStreak: 0,
-      completionRate: 0, skippedCount: 0, completedCount: 0,
-      history: [],
-      createdAt: now, updatedAt: now,
-      archived: false, archivedAt: undefined,
-    }
-    return { habits: [...state.habits, copy] }
-  }),
+  restoreHabit: async (id) => {
+    set((state: any) => ({
+      habits: state.habits.map((h: Habit) => h.id === id ? { ...h, archived: false, archivedAt: undefined, updatedAt: new Date() } : h),
+    }))
+    // Restoring re-enables reminders, so the scheduler has to learn about them.
+    await syncHabitAlarms(get().habits)
+  },
+  duplicateHabit: async (id) => {
+    set((state: any) => {
+      const original = state.habits.find((h: Habit) => h.id === id)
+      if (!original || state.habits.length >= MAX_HABITS) return state
+      const now = new Date()
+      const copy: Habit = {
+        ...original as any,
+        id: generateId(),
+        name: `${original.name} (Copy)`,
+        completedDates: [],
+        skippedDates: [],
+        streak: 0, bestStreak: 0, currentStreak: 0, longestStreak: 0,
+        completionRate: 0, skippedCount: 0, completedCount: 0,
+        history: [],
+        createdAt: now, updatedAt: now,
+        archived: false, archivedAt: undefined,
+      }
+      return { habits: [...state.habits, copy] }
+    })
+    await syncHabitAlarms(get().habits)
+  },
   resetHabit: (id, period) => set((state: any) => ({
     habits: state.habits.map((h: Habit) => {
       if (h.id !== id) return h
@@ -212,11 +271,13 @@ export const createHabitSlice = (set: any, get: any, _api?: any): HabitSlice => 
     }),
   })),
   toggleHabitDay: async (id, date) => {
+    const target = get().habits.find((h: Habit) => h.id === id)
+    const wasCompleted = target ? normalizeCompletedDates(target.completedDates).includes(date) : false
     set((state: any) => ({
       habits: state.habits.map((h: Habit) => {
         if (h.id !== id) return h
-        const normalized = h.completedDates.map((d: string) => typeof d === 'string' ? d.split('T')[0] : format(new Date(d), 'yyyy-MM-dd'))
-        const dates = normalized.includes(date) ? normalized.filter((d: string) => d !== date) : [...normalized, date]
+        const normalized = normalizeCompletedDates(h.completedDates)
+        const dates = normalized.includes(date) ? normalized.filter((d: string) => d !== date) : [...normalized, date].sort()
         const streak = calculateStreak(dates)
         const bestStreak = Math.max(calculateLongestStreak(dates), streak, h.longestStreak ?? h.bestStreak ?? 0)
         const newHistory = [...(h.history || [])]
@@ -232,6 +293,9 @@ export const createHabitSlice = (set: any, get: any, _api?: any): HabitSlice => 
         }
       }),
     }))
+    get().addXP(wasCompleted ? -HABIT_CHECKIN_XP : HABIT_CHECKIN_XP)
+    try { get().checkAchievements() } catch {}
+    try { get().recalculateProductivityScore() } catch {}
     await syncHabitAlarms(get().habits)
     await dismissAlarm()
   },

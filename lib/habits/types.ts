@@ -183,6 +183,22 @@ export function habitIconEmoji(name: string | undefined): string {
   return (name && HABIT_ICON_EMOJI[name]) || '⭐'
 }
 
+/** Display labels for Habit.timeOfDay — used as the habit's cue. */
+export const HABIT_TIME_OF_DAY_LABELS: Record<HabitTimeOfDay, string> = {
+  morning: 'Morning',
+  afternoon: 'Afternoon',
+  evening: 'Evening',
+  anytime: 'Anytime',
+}
+
+/** Sort rank so the daily list reads in cue order, not creation order. */
+export const HABIT_TIME_OF_DAY_RANK: Record<HabitTimeOfDay, number> = {
+  morning: 0,
+  afternoon: 1,
+  evening: 2,
+  anytime: 3,
+}
+
 export const HABIT_CATEGORIES = [
   'health', 'study', 'fitness', 'mindfulness', 'personal', 'work', 'social',
 ] as const

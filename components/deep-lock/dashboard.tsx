@@ -6,11 +6,14 @@ import { useStore } from '@/lib/store'
 import { deepLockPlugin, type DeepLockStatus } from '@/lib/deep-lock/plugin'
 import { Card } from '@/components/ui/glass-card'
 import { WhitelistEditor } from './WhitelistEditor'
+import { AppBlockerSection } from './AppBlockerSection'
+import { DeepLockOnboarding } from './DeepLockOnboarding'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/components/ui/toast'
 import { Sparkles, Plus, X } from 'lucide-react'
 import { syncMotivationAlarms } from '@/lib/motivation/scheduler'
-import { showMotivation } from '@/lib/motivation/useMotivationPopup'
+import { syncShieldSettingsToNative } from '@/lib/deep-lock/shield-sync'
+import { showMotivation } from '@/lib/motivation/deliver'
 import { getDeepLockMotivation } from '@/lib/insights'
 import {
   Shield, ShieldOff, ShieldCheck, Eye, Bell, Battery,
@@ -23,20 +26,51 @@ import {
 const POLL_INTERVAL = 3000
 const TEAL = 'oklch(72% 0.11 185)'
 
+/** Turn a native start failure into something the user can act on. */
+function startErrorText(error?: string): string {
+  switch (error) {
+    case 'accessibility_service_not_running':
+      return 'The Focus Shield service is not bound. Open Settings → Accessibility → Student OS, switch it off and on again.'
+    case 'strict_allowlist_empty':
+      return 'Strict mode needs at least one allowed app. Add one under Allowed Apps, or turn Strict off in the Focus tab.'
+    case 'session_not_active':
+      return 'The protected session did not start in time. Restart the app and try again.'
+    case 'blocking_not_armed':
+    case 'blocking_not_armed_timeout':
+    case 'start_failed':
+      return 'The blocklist did not arm. Restart the app and try again.'
+    case 'FocusShieldManager not initialized':
+      return 'The shield engine did not initialise. Restart the app and try again.'
+    case 'Not on native Android platform':
+      return 'Deep Lock only works in the installed Android app.'
+    default:
+      return error ?? 'Unknown error'
+  }
+}
+
 type ProtectionLevel = 'excellent' | 'good' | 'needs-attention'
 
-function computeProtectionScore(status: DeepLockStatus | null): { score: number; level: ProtectionLevel } {
+function computeProtectionScore(
+  status: DeepLockStatus | null,
+  policy: { blockListCount: number; shortForm: boolean },
+): { score: number; level: ProtectionLevel } {
   if (!status) return { score: 0, level: 'needs-attention' }
   let score = 0
-  if (status.accessibilityEnabled) score += 25
-  if (status.dndGranted) score += 10
-  if (status.batteryOptimizationIgnored) score += 15
+  if (status.accessibilityEnabled) score += 20
+  if (status.dndGranted) score += 8
+  if (status.batteryOptimizationIgnored) score += 12
   if (status.serviceRunning) score += 10
-  if (status.notificationPermissionGranted) score += 10
-  if (status.sessionActive) score += 10
-  score += status.todayDistractions > 0 ? 5 : 0
-  score += status.totalFocusMs > 0 ? 5 : 0
-  if (status.accessibilityEnabled && status.batteryOptimizationIgnored) score += 10
+  if (status.notificationPermissionGranted) score += 8
+  if (status.sessionActive) score += 8
+  score += status.todayDistractions > 0 ? 4 : 0
+  score += status.totalFocusMs > 0 ? 4 : 0
+  if (status.accessibilityEnabled && status.batteryOptimizationIgnored) score += 6
+  // Permissions alone do not block anything — the score has to reflect whether
+  // the shield actually has a policy to enforce. Otherwise an empty block list
+  // with Shorts/Reels off still read "Excellent".
+  if (policy.blockListCount > 0) score += 12
+  if (policy.shortForm) score += 8
+  if (policy.blockListCount === 0 && !policy.shortForm) score = Math.min(score, 55)
   return {
     score: Math.min(score, 100),
     level: score >= 85 ? 'excellent' : score >= 60 ? 'good' : 'needs-attention',
@@ -144,16 +178,34 @@ export function DeepLockDashboard() {
   const [showSetupGuide, setShowSetupGuide] = useState(false)
   const [showDiagnostics, setShowDiagnostics] = useState(false)
   const [fsiGranted, setFsiGranted] = useState<boolean | null>(null)
+  const [showOnboarding, setShowOnboarding] = useState(false)
+  const onboardingDismissedRef = useRef(false)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const [stopArmed, setStopArmed] = useState(false)
+  const stopArmRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const lastStartAtRef = useRef(0)
 
   const deepLockActive = useStore((s) => s.deepLockActive)
+  const deepLockOnboardingComplete = useStore((s) => s.deepLockOnboardingComplete)
   const setDeepLockActive = useStore((s) => s.setDeepLockActive)
   const setFocusShieldMode = useStore((s) => s.setFocusShieldMode)
   const setShowAccessibilityDisclosure = useStore((s) => s.setShowAccessibilityDisclosure)
   const progress = useStore((s) => s.progress)
   const dailyGoal = useStore((s) => s.dailyGoal)
   const whitelistedApps = useStore((s) => s.whitelistedApps)
+  const alwaysBlockedApps = useStore((s) => s.alwaysBlockedApps)
+  const sessionBlockedApps = useStore((s) => s.sessionBlockedApps)
   const preferredFocusDuration = useStore((s) => s.preferredFocusDuration)
+  const strictFocus = useStore((s) => s.timerSettings?.strictFocus ?? false)
+  const breakBlockingEnabled = useStore((s) => s.breakBlockingEnabled)
+  const breakBlockedApps = useStore((s) => s.breakBlockedApps)
+  const blockShorts = useStore((s) => s.blockShorts)
+  const blockReels = useStore((s) => s.blockReels)
+  const blockTikTok = useStore((s) => s.blockTikTok)
+  const blockSnapchat = useStore((s) => s.blockSnapchat)
+  const youtubeStudyMode = useStore((s) => s.youtubeStudyMode)
+  const setBlockShorts = useStore((s) => s.setBlockShorts)
+  const setBlockReels = useStore((s) => s.setBlockReels)
     const { showToast } = useToast()
   
   const motivationEnabled = useStore(s => s.motivationEnabled)
@@ -212,6 +264,39 @@ export function DeepLockDashboard() {
     return () => { if (pollRef.current) clearInterval(pollRef.current) }
   }, [fetchStatus])
 
+  useEffect(() => () => {
+    if (stopArmRef.current) clearTimeout(stopArmRef.current)
+  }, [])
+
+  // Native is the source of truth. `deepLockActive` is not persisted, so after a
+  // restart (or a service kill) the hero could say "Enable Protection" while a
+  // session was still running natively, or the reverse. Reconcile on every poll,
+  // but give a just-started session a few seconds to become ACTIVE.
+  useEffect(() => {
+    if (!status) return
+    if (Date.now() - lastStartAtRef.current < 6000) return
+    const nativeActive = status.sessionState === 'active' || status.sessionState === 'paused'
+    if (nativeActive !== deepLockActive) {
+      setDeepLockActive(nativeActive)
+      setFocusShieldMode(nativeActive ? 'deep-lock' : 'normal')
+    }
+  }, [status, deepLockActive, setDeepLockActive, setFocusShieldMode])
+
+  // First-run guide. It must NOT appear until Accessibility + Usage Access are
+  // granted — those two are mandatory (accessibility is gated behind the API
+  // disclosure and cannot be skipped) and onboarding is pointless before the
+  // shield can actually enforce anything. The remaining permissions are
+  // optional. Closing dismisses for this app-session; completing persists
+  // `deepLockOnboardingComplete` so it never shows again.
+  useEffect(() => {
+    if (loading || !status) return
+    if (deepLockOnboardingComplete) return
+    if (onboardingDismissedRef.current) return
+    if (!status.accessibilityEnabled || !status.usageAccessGranted) return
+    const busy = status.sessionState === 'active' || status.sessionState === 'paused'
+    if (!busy) setShowOnboarding(true)
+  }, [loading, status, deepLockOnboardingComplete])
+
   // Full-screen intent status (A14+ can revoke it; alarms degrade silently)
   useEffect(() => {
     void deepLockPlugin.checkFullScreenIntent()
@@ -219,28 +304,104 @@ export function DeepLockDashboard() {
       .catch(() => setFsiGranted(null))
   }, [])
 
-  const { score: protectionScore, level: protectionLevel } = computeProtectionScore(status)
+  const { score: protectionScore, level: protectionLevel } = computeProtectionScore(status, {
+    blockListCount: alwaysBlockedApps.length + sessionBlockedApps.length,
+    shortForm: blockShorts || blockReels || blockTikTok || blockSnapchat || youtubeStudyMode,
+  })
 
   const handleToggle = useCallback(async () => {
     if (deepLockActive) {
-      await deepLockPlugin.stopDeepLock()
-      setDeepLockActive(false)
-      setFocusShieldMode('normal')
-    } else {
-      const missing: string[] = []
-      if (!status?.accessibilityEnabled) missing.push('Accessibility Service')
-      if (!status?.usageAccessGranted) missing.push('Usage Access')
-      if (missing.length > 0) {
-        showToast({ type: 'error', title: 'Permissions needed for Deep Lock', description: `Enable: ${missing.join(', ')}` })
-        setShowAccessibilityDisclosure(true)
+      // Stopping used to be a single tap on the same button, so "tap twice" to
+      // get it going silently ended the session. Require a second, deliberate tap.
+      if (!stopArmed) {
+        setStopArmed(true)
+        if (stopArmRef.current) clearTimeout(stopArmRef.current)
+        stopArmRef.current = setTimeout(() => setStopArmed(false), 4000)
+        showToast({ type: 'info', title: 'Tap again to stop', description: 'Your focus session is still running.' })
         return
       }
-      await deepLockPlugin.startDeepLock(whitelistedApps, 'deep-lock', preferredFocusDuration)
-      setDeepLockActive(true)
-      setFocusShieldMode('deep-lock')
+      setStopArmed(false)
+      if (stopArmRef.current) clearTimeout(stopArmRef.current)
+      const res = await deepLockPlugin.stopDeepLock()
+      if (!res.success) {
+        showToast({ type: 'error', title: 'Could not stop Deep Lock', description: startErrorText(res.error) })
+      }
+      setDeepLockActive(false)
+      setFocusShieldMode('normal')
+      fetchStatus()
+      return
     }
+
+    const missing: string[] = []
+    if (!status?.accessibilityEnabled) missing.push('Accessibility Service')
+    if (!status?.serviceRunning) missing.push('Focus Shield service (toggle Accessibility off/on)')
+    if (!status?.usageAccessGranted) missing.push('Usage Access')
+    if (missing.length > 0) {
+      showToast({ type: 'error', title: 'Deep Lock cannot start', description: `Fix: ${missing.join(' · ')}` })
+      setShowAccessibilityDisclosure(true)
+      return
+    }
+
+    // A session with nothing to enforce is a lie: the timer runs, the shield
+    // does nothing, and the UI says "protected". Require at least one real
+    // policy (blocked apps, or the Shorts/Reels surface filters) before arming.
+    const blockedCount = alwaysBlockedApps.length + sessionBlockedApps.length + breakBlockedApps.length
+    const hasSurfaceFilters = blockShorts || blockReels
+    if (blockedCount === 0 && !hasSurfaceFilters && !strictFocus) {
+      showToast({
+        type: 'error',
+        title: 'Nothing to block yet',
+        description: 'Add at least one app under App Blocking → “During focus”. A blocklist session with an empty list blocks nothing.',
+      })
+      return
+    }
+    if (strictFocus && whitelistedApps.length === 0) {
+      showToast({
+        type: 'error',
+        title: 'Strict mode needs allowed apps',
+        description: 'Add at least one app to Allowed Apps, or turn Strict off in the Focus tab.',
+      })
+      return
+    }
+
+    // Make sure the blocklist has reached native before arming: the lists are
+    // persisted asynchronously, so starting mid-sync armed from a stale snapshot.
+    await syncShieldSettingsToNative()
+
+    const res = await deepLockPlugin.startDeepLock(whitelistedApps, 'deep-lock', preferredFocusDuration, strictFocus, breakBlockedApps)
+    if (!res.success) {
+      // Native refused (service not bound / engine missing). Never show a green
+      // shield over an unenforced session.
+      showToast({ type: 'error', title: 'Deep Lock could not start', description: startErrorText(res.error) })
+      setDeepLockActive(false)
+      setFocusShieldMode('normal')
+      fetchStatus()
+      return
+    }
+
+    lastStartAtRef.current = Date.now()
+    setDeepLockActive(true)
+    setFocusShieldMode('deep-lock')
+    showToast({
+      type: 'info',
+      title: 'Deep Lock active',
+      description: strictFocus
+        ? `Allowlist mode — only your ${whitelistedApps.length} allowed app${whitelistedApps.length === 1 ? '' : 's'} stays usable.`
+        : blockedCount > 0
+          ? `Blocking ${blockedCount} app${blockedCount === 1 ? '' : 's'} during this session.`
+          : 'Shorts & Reels are blocked. Add apps under App Blocking for stronger protection.',
+    })
     fetchStatus()
-  }, [deepLockActive, setDeepLockActive, setFocusShieldMode, setShowAccessibilityDisclosure, fetchStatus, whitelistedApps, status, showToast])
+  }, [deepLockActive, stopArmed, setDeepLockActive, setFocusShieldMode, setShowAccessibilityDisclosure, fetchStatus, whitelistedApps, alwaysBlockedApps, sessionBlockedApps, status, showToast, breakBlockingEnabled, breakBlockedApps, preferredFocusDuration, blockShorts, blockReels, setBlockShorts, setBlockReels, strictFocus])
+
+  /** One tap to turn an empty policy into a real one, mid-session. */
+  const handleEnableShortForm = useCallback(async () => {
+    setBlockShorts(true)
+    setBlockReels(true)
+    await syncShieldSettingsToNative()
+    showToast({ type: 'success', title: 'Shorts & Reels blocked', description: 'Active for the rest of this session.' })
+    fetchStatus()
+  }, [setBlockShorts, setBlockReels, showToast, fetchStatus])
 
   const handlePause = useCallback(async () => { await deepLockPlugin.pauseDeepLock(); fetchStatus() }, [fetchStatus])
   const handleResume = useCallback(async () => { await deepLockPlugin.resumeDeepLock(); fetchStatus() }, [fetchStatus])
@@ -338,11 +499,48 @@ export function DeepLockDashboard() {
                 style={deepLockActive ? {} : { backgroundColor: TEAL, boxShadow: `0 8px 32px ${TEAL}33` }}
               >
                 {deepLockActive ? (
-                  <><ShieldOff className="w-4 h-4" /> Stop Protection</>
+                  <><ShieldOff className="w-4 h-4" /> {stopArmed ? 'Tap again to stop' : 'Stop Protection'}</>
                 ) : (
                   <><Shield className="w-4 h-4" /> Enable Protection</>
                 )}
               </button>
+
+              {/* Enforcement reality check — everything that must be true for a
+                  block to happen, so a silent no-op is visible instead. */}
+              <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] font-mono uppercase tracking-wider">
+                <span className={cn('flex items-center gap-1.5', status?.serviceRunning ? 'text-green-400' : 'text-red-400')}>
+                  <span className={cn('w-1.5 h-1.5 rounded-full', status?.serviceRunning ? 'bg-green-400' : 'bg-red-400')} />
+                  Service {status?.serviceRunning ? 'bound' : 'not bound'}
+                </span>
+                <span className={cn(alwaysBlockedApps.length + sessionBlockedApps.length > 0 ? 'text-muted-foreground' : 'text-amber-400')}>
+                  Apps: {alwaysBlockedApps.length + sessionBlockedApps.length}
+                </span>
+                <span className={cn(blockShorts || blockReels || blockTikTok || blockSnapchat || youtubeStudyMode ? 'text-muted-foreground' : 'text-amber-400')}>
+                  Surfaces: {
+                    [
+                      blockShorts && 'Shorts',
+                      blockReels && 'Reels',
+                      blockTikTok && 'TikTok',
+                      blockSnapchat && 'Snap',
+                      youtubeStudyMode && 'YT-Study',
+                    ].filter(Boolean).join('+') || 'off'
+                  }
+                </span>
+                <span className="text-muted-foreground">
+                  Session: {status?.sessionState ?? 'idle'}
+                </span>
+              </div>
+              {deepLockActive && alwaysBlockedApps.length === 0 && sessionBlockedApps.length === 0 && breakBlockedApps.length === 0 && !blockShorts && !blockReels && !blockTikTok && !blockSnapchat && !youtubeStudyMode && (
+                <div className="mt-2 flex items-center justify-between gap-2 rounded-lg border border-amber-500/20 bg-amber-500/10 px-2.5 py-2">
+                  <p className="text-[11px] text-amber-400">Nothing is being blocked right now.</p>
+                  <button
+                    onClick={handleEnableShortForm}
+                    className="shrink-0 rounded-md border border-amber-500/30 bg-amber-500/20 px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-amber-300 transition-colors hover:bg-amber-500/30 min-h-[40px]"
+                  >
+                    Block Shorts &amp; Reels
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </Card>
@@ -498,7 +696,7 @@ export function DeepLockDashboard() {
                   <div className="flex items-start gap-2 p-3 rounded-xl bg-amber-500/5 border border-amber-500/15">
                     <Lightbulb className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
                     <p className="text-xs text-muted-foreground leading-relaxed">
-                      <strong className="text-foreground">Tip:</strong> Start a focus session from the <strong className="text-foreground">Focus</strong> tab &mdash; if Deep Lock isn&apos;t set up, you&apos;ll see a prompt to enable it. You can also configure which apps are allowed from the <strong className="text-foreground">Allowed Apps</strong> section below.
+                      <strong className="text-foreground">Tip:</strong> Start a focus session from the <strong className="text-foreground">Focus</strong> tab &mdash; if Deep Lock isn&apos;t set up, you&apos;ll see a prompt to enable it. Choose which apps get locked under <strong className="text-foreground">App Blocking</strong> above, and which stay usable under <strong className="text-foreground">Allowed Apps</strong> below.
                     </p>
                   </div>
 
@@ -594,8 +792,8 @@ export function DeepLockDashboard() {
         transition={{ delay: 0.2, duration: 0.4 }}
         className="grid grid-cols-2 gap-3"
       >
-        <Card className="p-4">
-          <div className="flex items-center gap-3">
+        <Card className="p-3.5 sm:p-4 min-w-0 overflow-hidden">
+          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
             <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ backgroundColor: `${TEAL}0d` }}>
               <Timer className="w-4 h-4" style={{ color: TEAL }} />
             </div>
@@ -608,8 +806,8 @@ export function DeepLockDashboard() {
             </div>
           </div>
         </Card>
-        <Card className="p-4">
-          <div className="flex items-center gap-3">
+        <Card className="p-3.5 sm:p-4 min-w-0 overflow-hidden">
+          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
             <div className="w-9 h-9 rounded-xl bg-amber-500/5 flex items-center justify-center shrink-0">
               <AlertTriangle className="w-4 h-4 text-amber-400" />
             </div>
@@ -622,8 +820,8 @@ export function DeepLockDashboard() {
             </div>
           </div>
         </Card>
-        <Card className="p-4">
-          <div className="flex items-center gap-3">
+        <Card className="p-3.5 sm:p-4 min-w-0 overflow-hidden">
+          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
             <div className="w-9 h-9 rounded-xl bg-green-500/5 flex items-center justify-center shrink-0">
               <Target className="w-4 h-4 text-green-400" />
             </div>
@@ -634,8 +832,8 @@ export function DeepLockDashboard() {
             </div>
           </div>
         </Card>
-        <Card className="p-4">
-          <div className="flex items-center gap-3">
+        <Card className="p-3.5 sm:p-4 min-w-0 overflow-hidden">
+          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
             <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ backgroundColor: `${TEAL}0d` }}>
               <Shield className="w-4 h-4" style={{ color: TEAL }} />
             </div>
@@ -646,6 +844,15 @@ export function DeepLockDashboard() {
             </div>
           </div>
         </Card>
+      </motion.div>
+
+      {/* Section — Smart App Blocker & Break Protection */}
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.22, duration: 0.4 }}
+      >
+        <AppBlockerSection />
       </motion.div>
 
       {/* Section 5 — Allowed Apps + Diagnostics */}
@@ -664,7 +871,9 @@ export function DeepLockDashboard() {
               </div>
               <div className="text-left">
                 <p className="text-sm font-medium text-foreground">Allowed Apps</p>
-                <p className="text-xs font-mono text-muted-foreground">{whitelistedApps.length} whitelisted</p>
+                <p className="text-xs font-mono text-muted-foreground">
+                  {whitelistedApps.length} allowed · {alwaysBlockedApps.length + breakBlockedApps.length + sessionBlockedApps.length} blocked
+                </p>
               </div>
             </div>
             <div className="flex items-center gap-2">
@@ -877,6 +1086,17 @@ export function DeepLockDashboard() {
           )}
         </Card>
       </motion.div>
+
+      <AnimatePresence>
+        {showOnboarding && (
+          <DeepLockOnboarding
+            onClose={() => {
+              onboardingDismissedRef.current = true
+              setShowOnboarding(false)
+            }}
+          />
+        )}
+      </AnimatePresence>
 
     </motion.div>
   )

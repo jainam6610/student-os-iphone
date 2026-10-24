@@ -14,7 +14,7 @@ import {
   Activity, ListChecks, Brain, Smartphone,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { habitIconEmoji } from '@/lib/habits/types'
+import { HabitIcon } from '@/components/habits/HabitIcon'
 import { ProfileAvatar } from './profile-avatar'
 import { DashboardExamCountdown } from './dashboard-exam-countdown'
 import { deepLockPlugin } from '@/lib/deep-lock/plugin'
@@ -431,7 +431,7 @@ export function Dashboard() {
                 return (
                   <div key={habit.id} className="flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-secondary/50 transition-colors">
                     <span className={cn('w-5 h-5 rounded-lg flex items-center justify-center text-xs', done ? 'bg-success/20' : 'bg-secondary')}>
-                      {habitIconEmoji(habit.icon)}
+                      <HabitIcon name={habit.icon} size={12} />
                     </span>
                     <span className={cn('flex-1 text-sm truncate', done ? 'text-foreground/50 line-through' : 'text-foreground')}>{habit.name}</span>
                     {done ? (
@@ -645,11 +645,11 @@ function StatCard({ icon, label, value, trend, color }: {
 
   return (
     <motion.div
-      className={cn(cardStyle, 'p-4')}
+      className={cn(cardStyle, 'p-3.5 sm:p-4 min-w-0 overflow-hidden')}
       whileHover={{ y: -2 }}
       transition={spring.snappy}
     >
-      <div className="flex items-center gap-2 mb-1.5">
+      <div className="flex items-center gap-1.5 sm:gap-2 mb-1.5 min-w-0">
         <span className={cn(
           'text-muted-foreground',
           color === 'success' && 'text-success',
@@ -658,10 +658,10 @@ function StatCard({ icon, label, value, trend, color }: {
         )}>
           {icon}
         </span>
-        <span className="text-xs text-muted-foreground">{label}</span>
+        <span className="text-xs text-muted-foreground truncate">{label}</span>
       </div>
-      <div className="flex items-baseline gap-2">
-        <span className="text-lg font-semibold text-foreground">{value}</span>
+      <div className="flex items-baseline gap-1.5 sm:gap-2 min-w-0 flex-wrap">
+        <span className="text-base sm:text-lg font-semibold text-foreground truncate">{value}</span>
         {trend && (
           <span className="flex items-center text-xs text-success">
             <TrendingUp className="w-3 h-3 mr-0.5" />

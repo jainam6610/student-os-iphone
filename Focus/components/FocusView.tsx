@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useStore } from '@/lib/store'
 import { useWakeLock } from '@/hooks/use-wake-lock'
@@ -27,7 +27,7 @@ export function FocusView() {
     session, status, isRunning, isPaused, isIdle, hasActiveSession,
     isOnBreak, secondsRemaining, progressPercent,
     completionData,
-    start, pause, resume, stop, skipBreak, dismissCompletion,
+    start, startBreak, pause, resume, stop, skipBreak, dismissCompletion,
   } = useFocus()
 
   useEffect(() => {
@@ -67,6 +67,7 @@ export function FocusView() {
   const sessionCount = useStore((s) => s.focusSessions?.length ?? 0)
   const setShowAccessibilityDisclosure = useStore((s) => s.setShowAccessibilityDisclosure)
   const accessibilityServiceEnabled = useStore((s) => s.accessibilityServiceEnabled)
+  const deepLockError = useStore((s) => s.deepLockError)
 
   const todayFocusTime = useStore((s) =>
     (s.focusSessions ?? [])
@@ -99,6 +100,18 @@ export function FocusView() {
     if (hasActiveSession) return
     setPendingDuration((preferredFocusDuration > 0 ? preferredFocusDuration : DEFAULT_DURATION_SECONDS / 60) * 60)
   }, [preferredFocusDuration, hasActiveSession])
+
+  // Settings → Focus → "Auto-start focus". This setting had no consumer at all,
+  // so toggling it did nothing. Starting on first mount of the Focus view is the
+  // behaviour the label promises; the ref keeps it to once per view mount.
+  const autoStartHandled = useRef(false)
+  useEffect(() => {
+    if (autoStartHandled.current) return
+    if (!useStore.getState().autoStartFocus) return
+    if (hasActiveSession) { autoStartHandled.current = true; return }
+    autoStartHandled.current = true
+    start((preferredFocusDuration > 0 ? preferredFocusDuration : DEFAULT_DURATION_SECONDS / 60))
+  }, [hasActiveSession, preferredFocusDuration, start])
 
   const effectiveDuration = session ? session.plannedDuration : pendingDuration
   const sessionNum = sessionCount + 1
@@ -152,9 +165,9 @@ export function FocusView() {
 
       <FocusHeader userName={userName} onOpenPresets={() => setShowBottomSheet(true)} isIdle={isIdle} />
 
-      <main className="relative z-10 flex flex-col items-center justify-center flex-1 px-5 pt-24 pb-32">
+      <main className="relative z-10 flex flex-col items-center justify-center flex-1 px-4 sm:px-5 pt-14 sm:pt-20 lg:pt-24 pb-20 sm:pb-28 lg:pb-32 overflow-y-auto no-scrollbar">
         <FocusBanners
-          deepLockError={null}
+          deepLockError={deepLockError}
           accessibilityWarning={accessibilityServiceEnabled === false && !dismissedAccessibilityWarning}
           onDismissAccessibility={() => setDismissedAccessibilityWarning(true)}
           onOpenAccessibilitySettings={() => setShowAccessibilityDisclosure(true)}
@@ -166,6 +179,7 @@ export function FocusView() {
           isRunning={isRunning}
           isPaused={isPaused}
           progressPercent={hasActiveSession ? progressPercent : 0}
+          animationsEnabled={timerSettings?.animationsEnabled !== false}
         />
 
         {isOnBreak && hasActiveSession && (
@@ -197,6 +211,7 @@ export function FocusView() {
           isIdle={isIdle}
           isStrict={focusService.strict}
           onStart={handleStart}
+          onStartBreak={startBreak}
           onPause={pause}
           onResume={resume}
           onStop={stop}

@@ -1,4 +1,4 @@
-import { format, subDays, parse, differenceInDays, eachDayOfInterval, getDay } from 'date-fns'
+import { format, subDays, parse, addDays, differenceInDays, eachDayOfInterval, getDay } from 'date-fns'
 import { type Habit, type RepeatType, type HabitHistoryEntry, type HabitDailySummary } from './types'
 import { generateId } from '@/lib/utils'
 
@@ -42,41 +42,77 @@ export function isToday(dateStr: string): boolean {
   return dateStr === getTodayStr()
 }
 
-export function calculateStreak(completedDates: string[]): number {
-  if (!Array.isArray(completedDates) || completedDates.length === 0) return 0
-  const sorted = [...completedDates].sort().reverse()
-  let streak = 0
-  const today = getTodayStr()
-  let expected = today
-  for (const dateStr of sorted) {
-    if (typeof dateStr !== 'string') continue
-    if (dateStr === expected) {
-      streak++
-      const d = new Date(expected)
-      d.setDate(d.getDate() - 1)
-      expected = format(d, 'yyyy-MM-dd')
-    } else if (dateStr < expected) {
-      break
+/**
+ * Formats a stored reminder time ("HH:mm") for display, e.g. "9:00 AM".
+ * Returns null for missing/out-of-range values so a malformed stored string can
+ * never surface as a broken cue — or reach the alarm scheduler.
+ */
+export function formatHabitCueTime(value: string | undefined | null): string | null {
+  if (!value || typeof value !== 'string') return null
+  const [rawHours, rawMinutes] = value.split(':')
+  const hours = Number.parseInt(rawHours ?? '', 10)
+  const minutes = Number.parseInt(rawMinutes ?? '', 10)
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null
+  if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return null
+  const suffix = hours >= 12 ? 'PM' : 'AM'
+  return `${hours % 12 || 12}:${String(minutes).padStart(2, '0')} ${suffix}`
+}
+
+/**
+ * Completion dates arrive as "yyyy-MM-dd" or full ISO timestamps depending on
+ * record age. Normalise once, dedupe, and ignore anything unparseable.
+ */
+function toDateKeySet(completedDates: unknown): Set<string> {
+  const keys = new Set<string>()
+  if (!Array.isArray(completedDates)) return keys
+  for (const value of completedDates) {
+    if (typeof value === 'string') {
+      const key = value.split('T')[0]
+      if (/^\d{4}-\d{2}-\d{2}$/.test(key)) keys.add(key)
+      continue
     }
+    if (value instanceof Date && !Number.isNaN(value.getTime())) {
+      keys.add(format(value, 'yyyy-MM-dd'))
+    }
+  }
+  return keys
+}
+
+export function calculateStreak(completedDates: string[]): number {
+  const unique = toDateKeySet(completedDates)
+  if (unique.size === 0) return 0
+
+  const today = getTodayStr()
+  // A streak is only broken once a day is fully over. If today hasn't been
+  // checked in yet, keep counting from yesterday instead of reporting 0 — which
+  // used to wipe visible streaks (and the "at risk" nudge) every midnight.
+  let expected = unique.has(today) ? today : format(subDays(new Date(), 1), 'yyyy-MM-dd')
+  let streak = 0
+
+  while (unique.has(expected)) {
+    streak++
+    expected = format(subDays(parse(expected, 'yyyy-MM-dd', new Date()), 1), 'yyyy-MM-dd')
   }
   return streak
 }
 
 export function calculateLongestStreak(completedDates: string[]): number {
-  if (!Array.isArray(completedDates) || completedDates.length === 0) return 0
-  const sorted = [...completedDates].sort()
-  let best = 1
-  let current = 1
-  for (let i = 1; i < sorted.length; i++) {
-    const prev = new Date(sorted[i - 1])
-    const curr = new Date(sorted[i])
-    const diffDays = (curr.getTime() - prev.getTime()) / (1000 * 60 * 60 * 24)
-    if (diffDays === 1) {
-      current++
-      best = Math.max(best, current)
-    } else {
-      current = 1
+  const unique = toDateKeySet(completedDates)
+  if (unique.size === 0) return 0
+
+  let best = 0
+  for (const day of unique) {
+    const start = parse(day, 'yyyy-MM-dd', new Date())
+    // Only walk runs from their first day, so each run is counted exactly once.
+    if (unique.has(format(addDays(start, -1), 'yyyy-MM-dd'))) continue
+    let run = 0
+    let cursor = start
+    while (unique.has(format(cursor, 'yyyy-MM-dd'))) {
+      run++
+      // addDays preserves local midnight, so a DST jump can't round a day to 0.96.
+      cursor = addDays(cursor, 1)
     }
+    best = Math.max(best, run)
   }
   return best
 }

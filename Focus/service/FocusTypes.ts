@@ -13,6 +13,8 @@ export interface FocusSession {
   remaining: number
   pausedDuration: number
   pauseCount: number
+  /** Break time (minutes) measured from timestamps, not a tick counter. */
+  breakMinutes: number
   completed: boolean
   interrupted: boolean
 }
@@ -21,6 +23,8 @@ export interface CompletionData {
   duration: number
   score: number
   interrupted: boolean
+  /** Break minutes taken in/across this session. */
+  breakMinutes?: number
 }
 
 export type FocusEventType =

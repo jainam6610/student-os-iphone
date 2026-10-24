@@ -84,6 +84,15 @@ export function FocusCompletion({ completionData, isOnBreak, onStartAnother, onR
           <div className="text-2xl font-bold text-foreground">{data.score}%</div>
           <div className="text-xs text-muted-foreground mt-1">Focus Score</div>
         </div>
+        {(data.breakMinutes ?? 0) > 0 && (
+          <>
+            <div className="w-px bg-border" />
+            <div className="flex flex-col items-center">
+              <div className="text-2xl font-bold text-foreground">{formatMinutes(data.breakMinutes ?? 0)}</div>
+              <div className="text-xs text-muted-foreground mt-1">Break</div>
+            </div>
+          </>
+        )}
       </motion.div>
 
       <motion.div

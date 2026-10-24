@@ -3,8 +3,8 @@
 import { useState, useMemo, useCallback, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useStore } from '@/lib/store'
-import { type Habit, type HabitCreateInput } from '@/lib/habits/types'
-import { getTodayStr, getDueHabits, getCompletedToday, getRemainingToday, shouldHabitBeDoneToday } from '@/lib/habits/utils'
+import { type Habit, type HabitCreateInput, HABIT_TIME_OF_DAY_RANK } from '@/lib/habits/types'
+import { getTodayStr, getDueHabits, getCompletedToday, getRemainingToday, shouldHabitBeDoneToday, calculateStreak } from '@/lib/habits/utils'
 import { computeHabitAnalytics, generateHabitPatterns } from '@/lib/habits/analytics'
 import { HabitCard } from './HabitCard'
 import { HabitModal } from './HabitModal'
@@ -62,22 +62,36 @@ export function HabitView() {
 
   const filteredHabits = useMemo(() => {
     const source = showArchived ? archivedHabits : activeHabits
-    if (!selectedCategory || selectedCategory === 'all') return source
-    return source.filter((h) => h.category === selectedCategory)
+    const filtered = !selectedCategory || selectedCategory === 'all'
+      ? source
+      : source.filter((h) => h.category === selectedCategory)
+    // Cue order: the list should read like the day (morning → anytime), not like
+    // the order habits happened to be created. Array#sort is stable, so habits
+    // sharing a cue keep their existing order.
+    if (showArchived) return filtered
+    return [...filtered].sort(
+      (a, b) =>
+        (HABIT_TIME_OF_DAY_RANK[a.timeOfDay ?? 'anytime'] ?? 3) -
+        (HABIT_TIME_OF_DAY_RANK[b.timeOfDay ?? 'anytime'] ?? 3)
+    )
   }, [activeHabits, archivedHabits, showArchived, selectedCategory])
 
   const handleToggle = useCallback((id: string) => {
     const habit = habits.find((h) => h.id === id)
     if (!habit) return
 
-    if (habit.completedDates.includes(today)) {
+    const normalized = (habit.completedDates ?? []).map((d) => String(d).split('T')[0])
+    if (normalized.includes(today)) {
       undoCompleteHabit(id, today)
       showToast({ type: 'info', title: 'Habit undone', description: `"${habit.name}" marked as incomplete` })
-    } else {
-      const curStreak = habit.currentStreak ?? habit.streak ?? 0
-      completeHabit(id, today)
-      showToast({ type: 'streak', title: `${curStreak + 1} day streak!`, description: `"${habit.name}" completed` })
+      return
     }
+
+    // Report the streak that will actually be stored. `currentStreak + 1` was
+    // wrong whenever the last check-in was more than a day ago.
+    const nextStreak = calculateStreak([...normalized, today])
+    completeHabit(id, today)
+    showToast({ type: 'streak', title: `${nextStreak} day streak!`, description: `"${habit.name}" completed · +15 XP` })
   }, [habits, today, completeHabit, undoCompleteHabit, showToast])
 
   const handleToggleDay = useCallback((habitId: string, date: string) => {
@@ -99,15 +113,24 @@ export function HabitView() {
     Alarm.dismissAlarm().catch(() => {})
   }, [])
 
-  const handleSave = useCallback((input: HabitCreateInput) => {
-    if (editingHabit) {
-      updateHabit(editingHabit.id, input as any)
-      setEditingHabit(null)
-      showToast({ type: 'success', title: 'Habit updated', description: `"${input.name}" saved` })
-    } else {
-      addHabit(input as any)
-      setShowAddModal(false)
-      showToast({ type: 'success', title: 'Habit created', description: `"${input.name}" added` })
+  const handleSave = useCallback(async (input: HabitCreateInput): Promise<boolean> => {
+    try {
+      if (editingHabit) {
+        await Promise.resolve(updateHabit(editingHabit.id, input as any))
+        setEditingHabit(null)
+        showToast({ type: 'success', title: 'Habit updated', description: `"${input.name}" saved` })
+        return true
+      } else {
+        await Promise.resolve(addHabit(input as any))
+        setShowAddModal(false)
+        showToast({ type: 'success', title: 'Habit created', description: `"${input.name}" added` })
+        return true
+      }
+    } catch {
+      // Store writes can fail (quota / alarm bridge). Never close the modal on a
+      // silent failure — say so and leave the user's input intact.
+      showToast({ type: 'error', title: 'Could not save habit', description: 'Nothing was lost — try again.' })
+      return false
     }
   }, [editingHabit, updateHabit, addHabit, showToast])
 
@@ -120,13 +143,17 @@ export function HabitView() {
   }, [])
 
   const handleArchive = useCallback((id: string) => {
-    archiveHabit(id)
+    Promise.resolve(archiveHabit(id)).catch(() => {
+      showToast({ type: 'error', title: 'Could not archive habit', description: 'Try again in a moment.' })
+    })
     showToast({ type: 'info', title: 'Habit archived', description: 'You can restore it from the archive view.' })
   }, [archiveHabit, showToast])
 
   const confirmDelete = useCallback(() => {
     if (confirmDeleteId) {
-      deleteHabit(confirmDeleteId)
+      Promise.resolve(deleteHabit(confirmDeleteId)).catch(() => {
+        showToast({ type: 'error', title: 'Could not delete habit', description: 'Nothing was removed — try again.' })
+      })
       setConfirmDeleteId(null)
       showToast({ type: 'success', title: 'Habit deleted', description: 'Habit permanently removed.' })
     }

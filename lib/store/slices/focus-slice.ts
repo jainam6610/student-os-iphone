@@ -9,6 +9,11 @@ export interface FocusSlice {
   focusSessions: FocusSession[]
   addFocusSession: (session: Omit<FocusSession, 'id'>) => void
   addSessionReflection: (sessionId: string, reflection: string) => void
+  /**
+   * Attach timestamp-measured break minutes to the most recently recorded
+   * session (page.tsx creates the record; the service supplies the break time).
+   */
+  setLatestSessionBreakMinutes: (minutes: number) => void
   recomputeProgress: () => void
 }
 
@@ -28,9 +33,23 @@ export const createFocusSlice = (set: any, get: any, _api?: any): FocusSlice => 
       ...session, id: generateId(),
       duration: sanitizeNumber(session.duration, 0, 0, MAX_FOCUS_MINUTES),
       targetDuration: sanitizeNumber(session.targetDuration, 0, 0, MAX_FOCUS_MINUTES),
+      breakMinutes: sanitizeNumber(session.breakMinutes ?? 0, 0, 0, MAX_FOCUS_MINUTES),
       status, createdAt: session.createdAt ?? new Date(),
     }]
     return { focusSessions: newSessions, progress: computeRecomputedProgress(newSessions, state.progress) }
+  }),
+  setLatestSessionBreakMinutes: (minutes) => set((state: any) => {
+    const list: FocusSession[] = state.focusSessions
+    if (!list.length) return state
+    const last = list[list.length - 1]
+    const safeMinutes = sanitizeNumber(minutes, 0, 0, MAX_FOCUS_MINUTES)
+    if ((last.breakMinutes ?? 0) === safeMinutes) return state
+    return {
+      focusSessions: [
+        ...list.slice(0, -1),
+        { ...last, breakMinutes: safeMinutes },
+      ],
+    }
   }),
   addSessionReflection: (sessionId, reflection) => set((state: any) => ({
     focusSessions: state.focusSessions.map((s: FocusSession) => s.id === sessionId ? { ...s, reflection: sanitizeString(reflection, '', 5000) } : s),

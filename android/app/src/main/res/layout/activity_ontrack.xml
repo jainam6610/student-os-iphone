@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Calm "Are you on track?" check-in. Shown over a distracting app after the
+     user has been scrolling for 10 minutes outside a focus session. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/ontrackRoot"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/dl_warning_root"
+    android:clickable="true"
+    android:focusable="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:background="@drawable/dl_glass_card"
+        android:gravity="center_horizontal"
+        android:orientation="vertical"
+        android:paddingHorizontal="24dp"
+        android:paddingVertical="28dp">
+
+        <!-- Small status pill -->
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="@drawable/dl_pill_shield"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingHorizontal="14dp"
+            android:paddingVertical="6dp">
+
+            <View
+                android:layout_width="8dp"
+                android:layout_height="8dp"
+                android:background="@drawable/dl_ring_center"
+                android:backgroundTint="@color/dl_secondary" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:letterSpacing="0.08"
+                android:text="QUICK CHECK-IN"
+                android:textColor="@color/dl_secondary"
+                android:textSize="10sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:text="Are you on track?"
+            android:textColor="@color/dl_on_surface"
+            android:textSize="26sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/ontrackBody"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:gravity="center"
+            android:lineSpacingExtra="3dp"
+            android:text="You've been here for a while. Is this what you meant to do?"
+            android:textColor="@color/dl_on_surface_variant"
+            android:textSize="15sp" />
+
+        <Button
+            android:id="@+id/btnOnTrack"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:layout_marginTop="26dp"
+            android:background="@drawable/dl_btn_primary"
+            android:text="Yes, I'm on track"
+            android:textAllCaps="false"
+            android:textColor="@color/dl_on_primary"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+
+        <Button
+            android:id="@+id/btnOffTrack"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/dl_btn_secondary"
+            android:text="Not on track"
+            android:textAllCaps="false"
+            android:textColor="@color/dl_on_surface"
+            android:textSize="16sp" />
+    </LinearLayout>
+</FrameLayout>

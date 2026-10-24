@@ -119,6 +119,19 @@ export const useStore = create<StudentOSState>()(
         achievements: state.achievements,
         distractions: state.distractions,
         whitelistedApps: state.whitelistedApps,
+        breakBlockingEnabled: state.breakBlockingEnabled,
+        blockShorts: state.blockShorts,
+        blockReels: state.blockReels,
+        blockTikTok: state.blockTikTok,
+        blockSnapchat: state.blockSnapchat,
+        youtubeStudyMode: state.youtubeStudyMode,
+        blockAdultWebsites: state.blockAdultWebsites,
+        blockedWebsites: state.blockedWebsites,
+        shortFormAllowance: state.shortFormAllowance,
+        alwaysBlockedApps: state.alwaysBlockedApps,
+        sessionBlockedApps: state.sessionBlockedApps,
+        breakBlockedApps: state.breakBlockedApps,
+        deepLockOnboardingComplete: state.deepLockOnboardingComplete,
         autoDnd: state.autoDnd,
         motivationEnabled: state.motivationEnabled,
         motivationTimes: state.motivationTimes,
@@ -376,6 +389,39 @@ export const useStore = create<StudentOSState>()(
               return { ...rest, chapters: [{ id: `ch-${sub.id}-general`, name: 'General', topics }] }
             })
           }
+        } else if (version <= 21) {
+          // v22: user-maintained website block list (bare hostnames).
+          if (!Array.isArray(state.blockedWebsites)) state.blockedWebsites = []
+        } else if (version <= 22) {
+          // v23: short-form video (Shorts/Reels) budget per focus session.
+          if (typeof state.shortFormAllowance !== 'number') state.shortFormAllowance = 1
+        } else if (version <= 23) {
+          // v24: Deep Lock onboarding flag. Mark existing users complete when
+          // they already configured a policy, so we never re-onboard them.
+          if (typeof state.deepLockOnboardingComplete !== 'boolean') {
+            const hasPolicy =
+              (Array.isArray(state.alwaysBlockedApps) && state.alwaysBlockedApps.length > 0) ||
+              (Array.isArray(state.sessionBlockedApps) && state.sessionBlockedApps.length > 0) ||
+              (Array.isArray(state.breakBlockedApps) && state.breakBlockedApps.length > 0) ||
+              (Array.isArray(state.whitelistedApps) && state.whitelistedApps.length > 0) ||
+              (Array.isArray(state.blockedWebsites) && state.blockedWebsites.length > 0)
+            state.deepLockOnboardingComplete = hasPolicy
+          }
+        } else if (version <= 24) {
+          // v25: TikTok / Snapchat content filters. Default OFF — a new filter
+          // must never start rejecting content for an existing user without
+          // their explicit opt-in via the Deep Lock settings switch.
+          if (typeof state.blockTikTok !== 'boolean') state.blockTikTok = false
+          if (typeof state.blockSnapchat !== 'boolean') state.blockSnapchat = false
+        } else if (version <= 25) {
+          // v26: YouTube Study Mode (gate the Home feed; search + videos allowed).
+          // Off by default — opt-in, like the other content filters.
+          if (typeof state.youtubeStudyMode !== 'boolean') state.youtubeStudyMode = false
+        } else if (version <= 26) {
+          // v27: session-only blocklist. Onboarding used to write every picked
+          // app into `alwaysBlockedApps` (24/7). Existing users keep their
+          // current lists untouched — the 24/7 box can move apps to session-only.
+          if (!Array.isArray(state.sessionBlockedApps)) state.sessionBlockedApps = []
         }
 
         return state

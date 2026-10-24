@@ -6,6 +6,9 @@ import { focusService } from '../service/FocusService'
 import { focusEventBus } from '../service/FocusEvents'
 import { useStore } from '@/lib/store'
 
+/** Long-break length for each offered short-break tier (5 / 15 / 30 minutes). */
+const LONG_BREAK_MINUTES: Record<number, number> = { 5: 15, 10: 20, 15: 30, 20: 30 }
+
 export function useFocus() {
   const [session, setSession] = useState<FocusSession | null>(() => focusService.getSnapshot())
   const [completionData, setCompletionData] = useState<CompletionData | null>(null)
@@ -35,11 +38,12 @@ export function useFocus() {
         const score = s.plannedDuration > 0
           ? Math.min(100, Math.round((s.elapsed / s.plannedDuration) * 100))
           : 0
+        const breakMinutes = Math.round(s.breakMinutes ?? 0)
 
         // A completed break just ends the cycle — never auto-start another break.
         if (s.kind === 'break') {
           setIsOnBreak(false)
-          setCompletionData({ duration: Math.round(s.elapsed / 60), score, interrupted: false })
+          setCompletionData({ duration: Math.round(s.elapsed / 60), score, interrupted: false, breakMinutes })
           return
         }
 
@@ -49,13 +53,13 @@ export function useFocus() {
           const isLongBreak = timerSettings.longBreakFrequency > 0
             && completedCount > 0
             && completedCount % timerSettings.longBreakFrequency === 0
-          const breakMinutes = isLongBreak ? timerSettings.breakDuration * 3 : timerSettings.breakDuration
+          const breakMinutes = isLongBreak ? LONG_BREAK_MINUTES[timerSettings.breakDuration] ?? Math.min(60, timerSettings.breakDuration * 2) : timerSettings.breakDuration
           setIsOnBreak(true)
           focusService.start(breakMinutes, 'break')
           return
         }
 
-        setCompletionData({ duration: Math.round(s.elapsed / 60), score, interrupted: false })
+        setCompletionData({ duration: Math.round(s.elapsed / 60), score, interrupted: false, breakMinutes })
       }),
       focusEventBus.on('sessionStopped', (e) => {
         const s = e.session
@@ -63,7 +67,12 @@ export function useFocus() {
           ? Math.min(100, Math.round((s.elapsed / s.plannedDuration) * 100))
           : 0
         setIsOnBreak(false)
-        setCompletionData({ duration: Math.round(s.elapsed / 60), score, interrupted: true })
+        setCompletionData({
+          duration: Math.round(s.elapsed / 60),
+          score,
+          interrupted: true,
+          breakMinutes: Math.round(s.breakMinutes ?? 0),
+        })
       }),
     ]
     return () => {
@@ -75,6 +84,13 @@ export function useFocus() {
   const start = useCallback((durationMinutes: number) => {
     setIsOnBreak(false)
     focusService.start(durationMinutes)
+  }, [])
+
+  /** Start a standalone break session (5 / 15 / 30 min). */
+  const startBreak = useCallback((minutes: number) => {
+    if (focusService.getSnapshot()) return
+    setIsOnBreak(true)
+    focusService.start(minutes, 'break')
   }, [])
 
   const pause = useCallback(() => {
@@ -120,6 +136,7 @@ export function useFocus() {
     progressPercent,
     completionData,
     start,
+    startBreak,
     pause,
     resume,
     stop,

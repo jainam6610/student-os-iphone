@@ -3,7 +3,8 @@
 import { useMemo, memo } from 'react'
 import { motion } from 'framer-motion'
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, subMonths, addMonths } from 'date-fns'
-import { type Habit, habitIconEmoji } from '@/lib/habits/types'
+import { type Habit } from '@/lib/habits/types'
+import { HabitIcon } from './HabitIcon'
 import { isHabitDueOnDate } from '@/lib/habits/utils'
 import { cn } from '@/lib/utils'
 import { staggerItem } from '@/components/motion'
@@ -32,6 +33,8 @@ export const HabitMatrix = memo(function HabitMatrix({
 
   const activeHabits = useMemo(() => habits.filter((h) => !h.archived), [habits])
 
+  const now = new Date()
+  const todayStr = format(now, 'yyyy-MM-dd')
   const monthLabel = format(currentMonth, 'MMMM yyyy')
 
   const completedDays = useMemo(() => {
@@ -79,7 +82,7 @@ export const HabitMatrix = memo(function HabitMatrix({
           <div className="w-2 h-2 rounded-sm bg-surface-variant" /> Missed
         </div>
         <div className="flex items-center gap-1.5">
-          <div className="w-2 h-2 rounded-sm bg-primary/40" /> Partial
+          <div className="w-2 h-2 rounded-sm bg-warning/60" /> Skipped
         </div>
         <div className="flex items-center gap-1.5">
           <div className="w-2 h-2 rounded-sm bg-primary" /> Done
@@ -87,13 +90,13 @@ export const HabitMatrix = memo(function HabitMatrix({
       </div>
 
       <div className="overflow-x-auto no-scrollbar">
-        <div className="min-w-[640px] space-y-3">
+        <div className="min-w-max space-y-3">
           {/* Header days */}
           <div className="flex items-center">
             <div className="w-28 flex-shrink-0" />
-            <div className="flex flex-1 justify-between">
+            <div className="flex">
               {daysInMonth.map((d, i) => (
-                <div key={i} className="w-8 text-center text-[10px] font-medium text-on-surface-variant leading-[44px]">
+                <div key={i} className="w-11 shrink-0 text-center text-[10px] font-medium text-on-surface-variant leading-[44px]">
                   {format(d, 'd')}
                 </div>
               ))}
@@ -110,36 +113,58 @@ export const HabitMatrix = memo(function HabitMatrix({
             activeHabits.map((habit) => (
               <div key={habit.id} className="flex items-center group">
                 <div className="w-28 flex-shrink-0 flex items-center gap-2 overflow-hidden">
-                    <span className="text-sm shrink-0 leading-none">{habitIconEmoji(habit.icon)}</span>
+                    <HabitIcon name={habit.icon} size={14} className="shrink-0" />
                   <span className="text-xs font-medium text-on-surface truncate">{habit.name}</span>
                 </div>
-                <div className="flex flex-1 justify-between">
+                <div className="flex">
                   {daysInMonth.map((d, i) => {
                     const dateStr = format(d, 'yyyy-MM-dd')
                     const isCompleted = habit.completedDates.includes(dateStr)
-                    const isFuture = d > new Date()
+                    const isSkipped = habit.skippedDates?.includes(dateStr)
+                    const isFuture = d > now
                     const isDue = isHabitDueOnDate(habit, dateStr)
-                    const isToday = dateStr === format(new Date(), 'yyyy-MM-dd')
+                    const isToday = dateStr === todayStr
 
                     const getIntensity = () => {
                       if (isCompleted) return 'bg-primary ice-glow'
+                      if (isSkipped) return 'bg-warning/60'
                       if (isFuture || !isDue) return 'bg-surface-variant/30'
                       return 'bg-surface-variant'
                     }
 
+                    const status = isCompleted
+                      ? 'Completed'
+                      : isSkipped
+                        ? 'Skipped'
+                        : isFuture
+                          ? 'Future'
+                          : isDue
+                            ? 'Missed'
+                            : 'Not scheduled'
+
                     return (
-                      <button
-                        key={i}
-                        onClick={() => onToggleDay(habit.id, dateStr)}
-                        disabled={isFuture}
-                        className={cn(
-                          'w-8 h-8 rounded-sm transition-all hover:scale-125',
-                          getIntensity(),
-                          isToday && 'ring-1 ring-primary/50'
-                        )}
-                        title={`${format(d, 'MMM d')}: ${isCompleted ? 'Completed' : isFuture ? 'Future' : 'Missed'}`}
-                        aria-label={`${habit.name} on ${format(d, 'MMM d')}`}
-                      />
+                      // 44px hit target around a 32px visual dot, so the grid stays
+                      // dense without asking for sub-44px taps.
+                      <div key={i} className="w-11 shrink-0 flex items-center justify-center">
+                        <button
+                          type="button"
+                          onClick={() => onToggleDay(habit.id, dateStr)}
+                          disabled={isFuture}
+                          className="min-h-[44px] min-w-[44px] flex items-center justify-center"
+                          title={`${format(d, 'MMM d')}: ${status}`}
+                          aria-label={`${habit.name} on ${format(d, 'MMM d')} — ${status}`}
+                          aria-pressed={isCompleted}
+                        >
+                          <span
+                            className={cn(
+                              'w-8 h-8 rounded-sm block transition-all',
+                              getIntensity(),
+                              !isFuture && 'group-hover:brightness-110',
+                              isToday && 'ring-1 ring-primary/50'
+                            )}
+                          />
+                        </button>
+                      </div>
                     )
                   })}
                 </div>

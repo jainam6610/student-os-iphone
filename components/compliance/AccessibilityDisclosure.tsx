@@ -27,7 +27,7 @@ const PERMISSIONS: Array<{
     name: 'Accessibility Service',
     badge: 'REQUIRED FOR DEEP LOCK',
     badgeStyle: 'required',
-    collapsed: 'Detects the foreground app package name during an active Focus session so Deep Lock can identify blocked apps.',
+    collapsed: 'Detects the foreground app package name during an active Focus session, whether the YouTube Shorts / Instagram Reels player is open (element identifiers only, no content), plus the browser address bar when a website filter is on, so Deep Lock can identify blocked apps and sites.',
     expanded: {
       title: 'Accessibility Service',
       content: [

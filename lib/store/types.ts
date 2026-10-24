@@ -60,6 +60,8 @@ export interface FocusSession {
   energy?: number; distractions?: number; category?: string
   focusScore?: number; reflection?: string; pauseCount?: number
   pauseMinutes?: number
+  /** Break minutes measured from timestamps (tracked by FocusService). */
+  breakMinutes?: number
 }
 
 export interface PlannerReminder {

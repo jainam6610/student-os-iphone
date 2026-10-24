@@ -11,12 +11,16 @@ interface Props {
   isIdle: boolean
   isStrict?: boolean
   onStart: () => void
+  /** Standalone break sessions — 5 / 15 / 30 minutes. */
+  onStartBreak?: (minutes: number) => void
   onPause: () => void
   onResume: () => void
   onStop: () => void
 }
 
-export function FocusControls({ status, isRunning, isPaused, isIdle, isStrict = false, onStart, onPause, onResume, onStop }: Props) {
+const BREAK_OPTIONS = [5, 15, 30]
+
+export function FocusControls({ status, isRunning, isPaused, isIdle, isStrict = false, onStart, onStartBreak, onPause, onResume, onStop }: Props) {
   const handleMainAction = () => {
     if (isRunning) onPause()
     else if (isPaused) {
@@ -58,6 +62,24 @@ export function FocusControls({ status, isRunning, isPaused, isIdle, isStrict = 
       >
         {mainLabel}
       </motion.button>
+
+      {isIdle && onStartBreak && (
+        <div className="flex flex-col items-center gap-2 -mt-4">
+          <span className="text-[9px] uppercase tracking-widest text-muted-foreground/70">Take a break</span>
+          <div className="flex items-center gap-2">
+            {BREAK_OPTIONS.map((minutes) => (
+              <button
+                key={minutes}
+                onClick={() => onStartBreak(minutes)}
+                aria-label={`Start a ${minutes} minute break`}
+                className="min-h-[44px] min-w-[64px] px-3 rounded-full border border-border/60 text-xs font-medium text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors"
+              >
+                {minutes} min
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="flex items-center gap-16">
         <button

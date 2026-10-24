@@ -50,6 +50,8 @@ export interface AlarmPlugin {
   getPendingThought(): Promise<PendingThoughtResult>
   clearPendingThought(): Promise<{ success: boolean }>
   markThoughtHandled(options: { entityId: string }): Promise<{ success: boolean }>
+  /** Post a motivation "thought" immediately through the native ThoughtNotifier. */
+  postThought(options: { entityId: string; title: string; body: string }): Promise<{ success: boolean }>
   addListener(eventName: 'alarmFired', listener: (data: AlarmEventData) => void): Promise<PluginListenerHandle>
 }
 

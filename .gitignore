@@ -44,7 +44,7 @@ android/local.properties
 .cloudflare/
 
 # Sensitive signing material / certificates / secrets
-jainam
+/jainam
 *.p12
 *.pfx
 *.cer

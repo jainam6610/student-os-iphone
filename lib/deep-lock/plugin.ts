@@ -41,6 +41,14 @@ export interface DeepLockStatus {
   }
 }
 
+export interface InstalledApp {
+  packageName: string
+  appName: string
+  isSystemApp: boolean
+  /** `data:image/webp;base64,…` icon. Only present when requested via `withIcons`. */
+  icon?: string
+}
+
 export interface NativeSessionState {
   hasActiveSession: boolean
   sessionId?: string
@@ -62,8 +70,14 @@ export interface SessionCompletedEvent {
   streak: number
 }
 
+/**
+ * 'deep-lock' → standard session blocking, 'hardcore' → strict.
+ * 'break' → break session: only always/break-blocked apps are enforced.
+ */
+export type DeepLockMode = 'deep-lock' | 'hardcore' | 'break'
+
 export interface DeepLockPluginInterface {
-  startDeepLock(whitelist: string[], mode?: 'deep-lock' | 'hardcore', durationMinutes?: number, strict?: boolean): Promise<{ success: boolean; error?: string; sessionId?: string; endTime?: number; startTime?: number }>
+  startDeepLock(whitelist: string[], mode?: DeepLockMode, durationMinutes?: number, strict?: boolean, breakBlockedPackages?: string[]): Promise<{ success: boolean; error?: string; sessionId?: string; endTime?: number; startTime?: number }>
   stopDeepLock(): Promise<{ success: boolean; error?: string }>
   setMode(mode: 'deep-lock' | 'hardcore'): Promise<void>
   updateWhitelist(whitelist: string[]): Promise<{ success: boolean; error?: string }>
@@ -100,6 +114,8 @@ export interface DeepLockPluginInterface {
   forceStop(): Promise<{ success: boolean }>
   // App management
   openAppManagement(): Promise<{ success: boolean; error?: string }>
+  // Installed apps (onboarding checklist / app picker)
+  getInstalledApps(options?: { withIcons?: boolean }): Promise<{ apps: InstalledApp[] }>
   // Notification permission
   isNotificationPermissionGranted(): Promise<{ granted: boolean }>
   requestNotificationPermission(): Promise<{ granted: boolean; deniedPermanently?: boolean }>
@@ -113,6 +129,20 @@ export interface DeepLockPluginInterface {
   clearAllData(): Promise<{ success: boolean; error?: string }>
   // Combined status
   getDeepLockStatus(): Promise<DeepLockStatus>
+  // Break-time blocking & Always-blocked apps
+  updateAlwaysBlockedList(packages: string[]): Promise<{ success: boolean; error?: string }>
+  updateBreakBlockedList(packages: string[]): Promise<{ success: boolean; error?: string }>
+  /** Session-only blocklist (blocked while a focus session runs, allowed outside one). */
+  updateSessionBlockedList(packages: string[]): Promise<{ success: boolean; error?: string }>
+  setBreakBlockingEnabled(enabled: boolean): Promise<{ success: boolean }>
+  setContentFilters(filters: { blockShorts: boolean; blockReels: boolean; blockTikTok?: boolean; blockSnapchat?: boolean; youtubeStudyMode?: boolean; blockAdultUrls: boolean; blockedWebsites?: string[]; shortFormAllowance?: number }): Promise<{ success: boolean }>
+  getContentFilters(): Promise<{ success: boolean; blockShorts: boolean; blockReels: boolean; blockTikTok: boolean; blockSnapchat: boolean; youtubeStudyMode: boolean; blockAdultUrls: boolean; blockedWebsites: string[]; shortFormAllowance: number; checkInEnabled: boolean; serviceRunning: boolean }>
+  setCheckInEnabled(enabled: boolean): Promise<{ success: boolean }>
+  setYoutubeStudyMode(enabled: boolean): Promise<{ success: boolean }>
+  openStudyYouTube(): Promise<{ success: boolean; error?: string }>
+  getAlwaysBlockedList(): Promise<{ packages: string[] }>
+  getSessionBlockedList(): Promise<{ packages: string[]; success: boolean }>
+  getBreakBlockedList(): Promise<{ packages: string[] }>
 }
 
 type EventHandler = (data: any) => void
@@ -145,13 +175,15 @@ async function getNativePlugin(): Promise<any> {
 }
 
 export const deepLockPlugin: DeepLockPluginInterface = {
-  async startDeepLock(whitelist: string[], mode?: 'deep-lock' | 'hardcore', durationMinutes?: number, strict?: boolean): Promise<{ success: boolean; error?: string; sessionId?: string; endTime?: number; startTime?: number }> {
+  async startDeepLock(whitelist: string[], mode?: DeepLockMode, durationMinutes?: number, strict?: boolean, breakBlockedPackages?: string[]): Promise<{ success: boolean; error?: string; sessionId?: string; endTime?: number; startTime?: number }> {
     const plugin = await getNativePlugin()
     if (!plugin) return { success: false, error: 'Not on native Android platform' }
 
     try {
-      const result = await plugin.startDeepLock({ whitelist, mode, durationMinutes, strict: !!strict })
-      return { success: result?.success ?? true, error: result?.error, sessionId: result?.sessionId, endTime: result?.endTime, startTime: result?.startTime }
+      const result = await plugin.startDeepLock({ whitelist, mode, durationMinutes, strict: !!strict, breakBlockedPackages: breakBlockedPackages || [] })
+      // Never default to true: native refuses to arm when the accessibility
+      // service is not bound, and that refusal must reach the UI.
+      return { success: result?.success === true, error: result?.error, sessionId: result?.sessionId, endTime: result?.endTime, startTime: result?.startTime }
     } catch (e: any) {
       return { success: false, error: e.message || 'Unknown error' }
     }
@@ -179,7 +211,7 @@ export const deepLockPlugin: DeepLockPluginInterface = {
     if (!plugin) return { success: false, error: 'Not on native Android platform' }
     try {
       const result = await plugin.updateWhitelist({ whitelist })
-      return { success: result.success ?? true }
+      return { success: result?.success === true, error: result?.error }
     } catch (e: any) {
       return { success: false, error: e.message || 'Unknown error' }
     }
@@ -405,6 +437,15 @@ export const deepLockPlugin: DeepLockPluginInterface = {
     try { return await plugin.openAppManagement() } catch (e: any) { return { success: false, error: e.message } }
   },
 
+  async getInstalledApps(options?: { withIcons?: boolean }): Promise<{ apps: InstalledApp[] }> {
+    const plugin = await getNativePlugin()
+    if (!plugin?.getInstalledApps) return { apps: [] }
+    try {
+      const res = await plugin.getInstalledApps({ withIcons: options?.withIcons === true })
+      return { apps: Array.isArray(res?.apps) ? res.apps : [] }
+    } catch { return { apps: [] } }
+  },
+
   async getDeepLockStatus(): Promise<DeepLockStatus> {
     const plugin = await getNativePlugin()
     if (!plugin) return {
@@ -422,6 +463,168 @@ export const deepLockPlugin: DeepLockPluginInterface = {
       sessionActive: false, sessionState: 'idle', todayFocusMs: 0,
       todayDistractions: 0, totalFocusMs: 0,
     }}
+  },
+
+  async updateAlwaysBlockedList(packages: string[]): Promise<{ success: boolean; error?: string }> {
+    const plugin = await getNativePlugin()
+    if (!plugin) return { success: false, error: 'Not on native platform' }
+    try {
+      const res = await plugin.updateAlwaysBlockedList({ packages })
+      return { success: res?.success ?? true }
+    } catch (e: any) {
+      return { success: false, error: e?.message }
+    }
+  },
+
+  async updateBreakBlockedList(packages: string[]): Promise<{ success: boolean; error?: string }> {
+    const plugin = await getNativePlugin()
+    if (!plugin) return { success: false, error: 'Not on native platform' }
+    try {
+      const res = await plugin.updateBreakBlockedList({ packages })
+      return { success: res?.success ?? true }
+    } catch (e: any) {
+      return { success: false, error: e?.message }
+    }
+  },
+
+  async updateSessionBlockedList(packages: string[]): Promise<{ success: boolean; error?: string }> {
+    const plugin = await getNativePlugin()
+    if (!plugin) return { success: false, error: 'Not on native platform' }
+    try {
+      const res = await plugin.updateSessionBlockedList({ packages })
+      return { success: res?.success ?? true }
+    } catch (e: any) {
+      return { success: false, error: e?.message }
+    }
+  },
+
+  async setContentFilters(filters: { blockShorts: boolean; blockReels: boolean; blockTikTok?: boolean; blockSnapchat?: boolean; youtubeStudyMode?: boolean; blockAdultUrls: boolean; blockedWebsites?: string[]; shortFormAllowance?: number }): Promise<{ success: boolean }> {
+    const plugin = await getNativePlugin()
+    if (!plugin) return { success: false }
+    try {
+      const res = await plugin.setContentFilters({
+        blockShorts: !!filters.blockShorts,
+        blockReels: !!filters.blockReels,
+        blockTikTok: !!filters.blockTikTok,
+        blockSnapchat: !!filters.blockSnapchat,
+        youtubeStudyMode: !!filters.youtubeStudyMode,
+        blockAdultUrls: !!filters.blockAdultUrls,
+        blockedWebsites: Array.isArray(filters.blockedWebsites) ? filters.blockedWebsites : [],
+        shortFormAllowance: typeof filters.shortFormAllowance === 'number' ? filters.shortFormAllowance : 1,
+      })
+      return { success: res?.success ?? true }
+    } catch {
+      return { success: false }
+    }
+  },
+
+  async getContentFilters(): Promise<{ success: boolean; blockShorts: boolean; blockReels: boolean; blockTikTok: boolean; blockSnapchat: boolean; youtubeStudyMode: boolean; blockAdultUrls: boolean; blockedWebsites: string[]; shortFormAllowance: number; checkInEnabled: boolean; serviceRunning: boolean }> {
+    const plugin = await getNativePlugin()
+    const fallback = {
+      success: false, blockShorts: false, blockReels: false, blockTikTok: false,
+      blockSnapchat: false, youtubeStudyMode: false, blockAdultUrls: false,
+      blockedWebsites: [] as string[], shortFormAllowance: 1, checkInEnabled: false, serviceRunning: false,
+    }
+    if (!plugin) return fallback
+    try {
+      const res = await plugin.getContentFilters()
+      return {
+        success: !!res?.success,
+        blockShorts: !!res?.blockShorts,
+        blockReels: !!res?.blockReels,
+        blockTikTok: !!res?.blockTikTok,
+        blockSnapchat: !!res?.blockSnapchat,
+        youtubeStudyMode: !!res?.youtubeStudyMode,
+        blockAdultUrls: !!res?.blockAdultUrls,
+        blockedWebsites: Array.isArray(res?.blockedWebsites) ? res.blockedWebsites : [],
+        shortFormAllowance: typeof res?.shortFormAllowance === 'number' ? res.shortFormAllowance : 1,
+        checkInEnabled: !!res?.checkInEnabled,
+        serviceRunning: !!res?.serviceRunning,
+      }
+    } catch {
+      return fallback
+    }
+  },
+
+  async setCheckInEnabled(enabled: boolean): Promise<{ success: boolean }> {
+    const plugin = await getNativePlugin()
+    if (!plugin) return { success: false }
+    try {
+      const res = await plugin.setCheckInEnabled({ enabled: !!enabled })
+      return { success: res?.success ?? true }
+    } catch {
+      return { success: false }
+    }
+  },
+
+  async setYoutubeStudyMode(enabled: boolean): Promise<{ success: boolean }> {
+    const plugin = await getNativePlugin()
+    if (!plugin) return { success: false }
+    try {
+      const res = await plugin.setYoutubeStudyMode({ enabled: !!enabled })
+      return { success: res?.success ?? true }
+    } catch {
+      return { success: false }
+    }
+  },
+
+  /** Open the in-app distraction-free Study YouTube player (native WebView). */
+  async openStudyYouTube(): Promise<{ success: boolean; error?: string }> {
+    const plugin = await getNativePlugin()
+    if (!plugin) return { success: false, error: 'Not available on web' }
+    try {
+      const res = await plugin.openStudyYouTube()
+      return { success: res?.success ?? true, error: res?.error }
+    } catch (e: any) {
+      return { success: false, error: e?.message }
+    }
+  },
+
+  async setBreakBlockingEnabled(enabled: boolean): Promise<{ success: boolean }> {
+    const plugin = await getNativePlugin()
+    if (!plugin) return { success: false }
+    try {
+      const res = await plugin.setBreakBlockingEnabled({ enabled })
+      return { success: res?.success ?? true }
+    } catch {
+      return { success: false }
+    }
+  },
+
+  async getAlwaysBlockedList(): Promise<{ packages: string[] }> {
+    const plugin = await getNativePlugin()
+    if (!plugin) return { packages: [] }
+    try {
+      const res = await plugin.getAlwaysBlockedList()
+      return { packages: Array.isArray(res?.packages) ? res.packages : [] }
+    } catch {
+      return { packages: [] }
+    }
+  },
+
+  async getBreakBlockedList(): Promise<{ packages: string[] }> {
+    const plugin = await getNativePlugin()
+    if (!plugin) return { packages: [] }
+    try {
+      const res = await plugin.getBreakBlockedList()
+      return { packages: Array.isArray(res?.packages) ? res.packages : [] }
+    } catch {
+      return { packages: [] }
+    }
+  },
+
+  async getSessionBlockedList(): Promise<{ packages: string[]; success: boolean }> {
+    const plugin = await getNativePlugin()
+    if (!plugin) return { packages: [], success: false }
+    try {
+      const res = await plugin.getSessionBlockedList()
+      return {
+        packages: Array.isArray(res?.packages) ? res.packages : [],
+        success: res?.success === true,
+      }
+    } catch {
+      return { packages: [], success: false }
+    }
   },
 
   addListener(event: string, handler: EventHandler): { remove: () => void } {

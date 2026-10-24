@@ -1,6 +1,6 @@
 export const ISO_DATE_REGEX = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/
 export const STORAGE_KEY = 'student-os-storage-v3'
-export const CURRENT_SCHEMA_VERSION = 21
+export const CURRENT_SCHEMA_VERSION = 27
 export const QUOTA_WARN_THRESHOLD = 0.85
 
 export const MAX_SESSIONS = 10000

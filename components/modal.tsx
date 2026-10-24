@@ -114,7 +114,7 @@ export function Modal({ open, onClose, title, children, footer, className }: Mod
             </div>
 
             {footer && (
-              <div className="flex gap-3 px-5 py-4 border-t border-border/40 sticky bottom-0 bg-background/40 backdrop-blur-md">
+              <div className="flex gap-3 px-5 py-3.5 sm:py-4 pb-[max(env(safe-area-inset-bottom,0px),16px)] border-t border-border/40 sticky bottom-0 bg-background/80 backdrop-blur-md">
                 {footer}
               </div>
             )}

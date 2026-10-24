@@ -2,6 +2,7 @@ import { Capacitor } from '@capacitor/core'
 import type { Habit, StudyEvent } from './store'
 import { useStore } from './store'
 import Alarm from '@/lib/plugins/alarm-plugin'
+import { getTodayStr, isHabitDueOnDate } from '@/lib/habits/utils'
 
 const browserTimers = new Map<string, ReturnType<typeof setTimeout>>()
 
@@ -192,11 +193,28 @@ export async function syncHabitAlarms(habits: Habit[]): Promise<void> {
   return serialized(() => syncHabitAlarmsImpl(habits))
 }
 
+/** Rebuild native schedules after returning from Android's exact-alarm settings. */
+export async function refreshHabitAlarmsAfterPermissionChange(habits: Habit[]): Promise<void> {
+  if (!isNative()) return
+  return serialized(async () => {
+    try {
+      const { granted } = await Alarm.checkExactAlarmPermission()
+      if (!granted) return
+      lastHabitIds.clear()
+      await syncHabitAlarmsImpl(habits)
+    } catch (e) {
+      console.warn('[Alarm] Could not refresh habit reminders after permission change', e)
+    }
+  })
+}
+
 async function syncHabitAlarmsImpl(habits: Habit[]): Promise<void> {
   await runOneTimeMigration()
 
   const now = new Date()
-  const today = now.toISOString().split('T')[0]
+  // Habit dates are local calendar dates throughout the UI and store. UTC can
+  // roll over hours before or after local midnight and suppress the wrong alarm.
+  const today = getTodayStr()
 
   if (isNative()) {
     const { granted } = await Alarm.checkExactAlarmPermission()
@@ -229,12 +247,9 @@ async function syncHabitAlarmsImpl(habits: Habit[]): Promise<void> {
     const completedToday = habit.completedDates.includes(today) && !(habit.reminder?.repeat)
     if (completedToday) { activeIds.set(habit.id, []); continue }
 
-    const entityIds: string[] = []
-    for (const timeStr of times) {
-      const [h, m] = timeStr.split(':').map(Number)
-      if (isNaN(h) || isNaN(m)) continue
-      entityIds.push(`${habit.id}-${timeStr}`)
-    }
+    const entityIds = [...new Set(times.filter((timeStr) =>
+      typeof timeStr === 'string' && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(timeStr)
+    ).map((timeStr) => `${habit.id}-${timeStr}`))]
     activeIds.set(habit.id, entityIds)
   }
 
@@ -258,8 +273,17 @@ async function syncHabitAlarmsImpl(habits: Habit[]): Promise<void> {
 
       const scheduleAt = new Date(now)
       scheduleAt.setHours(h, m, 0, 0)
-      if (scheduleAt <= now) {
-        scheduleAt.setDate(scheduleAt.getDate() + 1)
+      // Choose the next date on which this habit is due. Native recurrence uses
+      // the same rule after firing, so weekly/custom habits don't become daily.
+      for (let daysAhead = 0; daysAhead < 370; daysAhead++) {
+        const candidate = new Date(now)
+        candidate.setDate(candidate.getDate() + daysAhead)
+        candidate.setHours(h, m, 0, 0)
+        const dateKey = `${candidate.getFullYear()}-${String(candidate.getMonth() + 1).padStart(2, '0')}-${String(candidate.getDate()).padStart(2, '0')}`
+        if (candidate > now && isHabitDueOnDate(habit, dateKey)) {
+          scheduleAt.setTime(candidate.getTime())
+          break
+        }
       }
 
       await scheduleAlarm({
@@ -270,7 +294,14 @@ async function syncHabitAlarmsImpl(habits: Habit[]): Promise<void> {
         scheduleAt,
         sound: habit.reminder?.sound || 'default',
         vibration: habit.reminder?.vibration ?? true,
-        extra: { habitId: habit.id, time: timeStr },
+        extra: {
+          habitId: habit.id,
+          time: timeStr,
+          repeatType: habit.repeatType || (habit.frequency === 'weekly' ? 'weekly' : 'daily'),
+          repeatDays: habit.repeatDays || habit.targetDays || [],
+          repeatInterval: habit.repeatInterval || 1,
+          createdAtMs: new Date(habit.createdAt).getTime(),
+        },
       })
     }
 

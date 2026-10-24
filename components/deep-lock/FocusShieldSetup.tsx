@@ -324,16 +324,18 @@ export function FocusShieldSetup() {
         {step === 'allowed-apps' && (
           <div>
             <div className="text-center mb-6">
-              <h2 className="text-xl font-bold text-foreground mb-1">Allowed Apps</h2>
+              <h2 className="text-xl font-bold text-foreground mb-1">Apps &amp; Focus</h2>
               <p className="text-sm text-muted-foreground">
-                Choose which apps can be used during focus sessions
+                Decide what stays usable and what gets locked
               </p>
             </div>
 
             <div className="bg-card rounded-xl p-4 border border-border/50 mb-6">
               <p className="text-xs text-muted-foreground leading-relaxed">
-                Apps you mark as <strong className="text-foreground">Allowed</strong> will remain accessible
-                during Deep Lock sessions. Everything else will be blocked.
+                Deep Lock is a <strong className="text-foreground">blocklist</strong>: it locks the apps you
+                mark <strong className="text-foreground">Blocked</strong> during sessions and leaves everything
+                else working. Mark <strong className="text-foreground">Allowed</strong> to keep a tool open even
+                in Strict mode. Apps you never touch are unaffected.
               </p>
             </div>
 

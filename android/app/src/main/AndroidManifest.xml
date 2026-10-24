@@ -104,6 +104,36 @@
             android:exported="false">
         </activity>
 
+        <!-- "Are you on track?" check-in shown over distracting apps. -->
+        <activity
+            android:name=".OnTrackActivity"
+            android:theme="@style/Theme.Transparent"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:launchMode="singleInstance"
+            android:exported="false">
+        </activity>
+
+        <!-- YouTube Study Mode gate over the Home feed. -->
+        <activity
+            android:name=".StudyModeActivity"
+            android:theme="@style/Theme.Transparent"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:launchMode="singleInstance"
+            android:exported="false">
+        </activity>
+
+        <!-- In-app Study YouTube player (WebView + injected distraction-free script). -->
+        <activity
+            android:name=".StudyYouTubeActivity"
+            android:theme="@style/AppTheme.NoActionBar"
+            android:configChanges="orientation|screenSize|keyboardHidden|screenLayout|smallestScreenSize|uiMode"
+            android:hardwareAccelerated="true"
+            android:launchMode="singleTask"
+            android:exported="false">
+        </activity>
+
         <activity
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation|density"
             android:name=".MainActivity"

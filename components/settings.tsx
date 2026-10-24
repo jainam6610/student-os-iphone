@@ -16,7 +16,6 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { ProfileAvatar } from './profile-avatar'
-import { DeepLockShieldSelector } from './deep-lock/DeepLockShieldSelector'
 import { WhitelistEditor } from './deep-lock/WhitelistEditor'
 import { AVATAR_CATEGORIES } from './ui/avatars'
 import {
@@ -138,10 +137,8 @@ export function Settings() {
   const setShowExamCountdownOnStartup = useStore((s) => s.setShowExamCountdownOnStartup)
   const plannerSettings = useStore((s) => s.plannerSettings)
   const setPlannerSettings = useStore((s) => s.setPlannerSettings)
-  const compactMode = useStore((s) => s.compactMode)
-  const setCompactMode = useStore((s) => s.setCompactMode)
-  const dashboardLayout = useStore((s) => s.dashboardLayout)
-  const setDashboardLayout = useStore((s) => s.setDashboardLayout)
+  const ambientSoundEnabled = useStore((s) => s.ambientSoundEnabled)
+  const setAmbientSoundEnabled = useStore((s) => s.setAmbientSoundEnabled)
   const setActiveView = useStore((s) => s.setActiveView)
   const examDate = useStore((s) => s.examDate)
   const setExamDate = useStore((s) => s.setExamDate)
@@ -309,8 +306,7 @@ export function Settings() {
         <Card className="p-0 overflow-hidden">
           <SettingRow icon={<Target className="w-4 h-4" />} title="Academic goal" description={academicGoal || 'Not set'} onClick={() => setShowGoalModal(true)} />
           <SettingRow icon={<Clock className="w-4 h-4" />} title="Daily focus goal" description={`${dailyGoal} min/day`} onClick={() => setShowDailyGoalModal(true)} />
-          <SettingRow icon={<Brain className="w-4 h-4" />} title="Study style" description={studyStyle.split('-').map((s) => s.charAt(0).toUpperCase() + s.slice(1)).join(' ')} />
-          <SettingRow icon={<Layout className="w-4 h-4" />} title="Compact mode" description={compactMode ? 'On' : 'Off'} onClick={() => setCompactMode(!compactMode)} isLast />
+          <SettingRow icon={<Brain className="w-4 h-4" />} title="Study style" description={studyStyle.split('-').map((s) => s.charAt(0).toUpperCase() + s.slice(1)).join(' ')} isLast />
         </Card>
         {/* Study style picker */}
         <Card className="p-1 sm:p-1.5 mt-2">
@@ -333,12 +329,12 @@ export function Settings() {
           <SettingRow icon={<Clock className="w-4 h-4" />} title="Default duration" description={`${preferredFocusDuration} min`} onClick={() => { setDurationInput(preferredFocusDuration.toString()); setShowDurationModal(true) }} />
           <SettingRow icon={<BellRing className="w-4 h-4" />} title="Completion sound" description={timerSettings.notificationEnabled ? 'On' : 'Off'} onClick={() => setTimerSettings({ notificationEnabled: !timerSettings.notificationEnabled })} />
           <SettingRow icon={<Zap className="w-4 h-4" />} title="Vibration" description={timerSettings.vibrationEnabled ? 'On' : 'Off'} onClick={() => setTimerSettings({ vibrationEnabled: !timerSettings.vibrationEnabled })} />
-          <SettingRow icon={<Music className="w-4 h-4" />} title="Background sounds" description={timerSettings.backgroundSounds ? 'On' : 'Off'} onClick={() => setTimerSettings({ backgroundSounds: !timerSettings.backgroundSounds })} />
+          <SettingRow icon={<Music className="w-4 h-4" />} title="Background sounds" description={ambientSoundEnabled ? 'On' : 'Off'} onClick={() => setAmbientSoundEnabled(!ambientSoundEnabled)} />
           <SettingRow icon={<Coffee className="w-4 h-4" />} title="Auto break" description={timerSettings.autoBreak ? `${timerSettings.breakDuration} min` : 'Off'} onClick={() => setTimerSettings({ autoBreak: !timerSettings.autoBreak })} />
           {timerSettings.autoBreak && (
             <>
               <SettingRow icon={<Clock className="w-4 h-4" />} title="Break duration" description={`${timerSettings.breakDuration} min`} onClick={() => {
-                const options = [5, 10, 15, 20]
+                const options = [5, 15, 30]
                 const next = options[(options.indexOf(timerSettings.breakDuration) + 1) % options.length]
                 setTimerSettings({ breakDuration: next })
               }} />
@@ -359,8 +355,7 @@ export function Settings() {
       {/* ─── FOCUS SHIELD ────────────────────────────────── */}
       <SettingsSection title="Focus Shield" icon={Shield} defaultOpen>
         <Card className="p-4 space-y-3">
-          <DeepLockShieldSelector embedded />
-          <div className="flex items-center justify-between pt-2 border-t border-border">
+          <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <ListChecks className="w-4 h-4 text-muted-foreground" />
               <div>
@@ -620,13 +615,13 @@ export function Settings() {
               </p>
               <div className="flex flex-wrap items-center gap-2 mt-3">
                 <a
-                  href="https://instagram.com/thats.jainam.dev"
+                  href="https://instagram.com/thats.jainam_dev"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-secondary hover:bg-secondary/80 transition-colors text-xs text-muted-foreground hover:text-foreground"
                 >
                   <Instagram className="w-3.5 h-3.5" />
-                  <span>@thats.jainam.dev</span>
+                  <span>@thats.jainam_dev</span>
                 </a>
                 <a
                   href="https://instagram.com/thats.jainam"
@@ -641,7 +636,7 @@ export function Settings() {
               <div className="mt-4 p-3 rounded-xl bg-primary/5 border border-primary/10">
                 <p className="text-xs text-muted-foreground leading-relaxed">
                   <span className="font-medium text-foreground">Suggestions or complaints?</span> Just tag{' '}
-                  <a href="https://instagram.com/thats.jainam.dev" target="_blank" rel="noopener noreferrer" className="text-primary underline underline-offset-2">@thats.jainam.dev</a>{' '}
+                  <a href="https://instagram.com/thats.jainam_dev" target="_blank" rel="noopener noreferrer" className="text-primary underline underline-offset-2">@thats.jainam_dev</a>{' '}
                   — any bug or problem will be fixed within a month (it may take time).
                 </p>
                 <p className="text-xs text-muted-foreground leading-relaxed mt-2">

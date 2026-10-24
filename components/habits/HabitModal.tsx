@@ -2,7 +2,8 @@
 
 import { useState, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { type Habit, type RepeatType, type HabitPriority, type HabitCreateInput, HABIT_ICONS, HABIT_CATEGORIES, CATEGORY_META, HABIT_COLORS, REPEAT_LABELS, habitIconEmoji } from '@/lib/habits/types'
+import { type Habit, type RepeatType, type HabitPriority, type HabitTimeOfDay, type HabitCreateInput, HABIT_ICONS, HABIT_CATEGORIES, CATEGORY_META, HABIT_COLORS, REPEAT_LABELS } from '@/lib/habits/types'
+import { HabitIcon } from './HabitIcon'
 import { Modal } from '@/components/modal'
 import { Button } from '@/components/ui/button'
 import { Input, Textarea } from '@/components/ui/input'
@@ -12,7 +13,7 @@ import { deepLockPlugin } from '@/lib/deep-lock/plugin'
 interface HabitModalProps {
   open: boolean
   onClose: () => void
-  onSave: (habit: HabitCreateInput) => void
+  onSave: (habit: HabitCreateInput) => Promise<boolean> | boolean
   editingHabit?: Habit | null
 }
 
@@ -22,6 +23,14 @@ const PRIORITY_OPTIONS: { value: HabitPriority; label: string; color: string }[]
   { value: 'low', label: 'Low', color: 'text-chart-2' },
   { value: 'medium', label: 'Medium', color: 'text-chart-3' },
   { value: 'high', label: 'High', color: 'text-chart-5' },
+]
+// Atomic Habits — "implementation intention": every habit gets a cue window,
+// not just a name. Stored on Habit.timeOfDay (already part of the schema).
+const TIME_OF_DAY_OPTIONS: { value: HabitTimeOfDay; label: string; hint: string }[] = [
+  { value: 'morning', label: 'Morning', hint: 'Wake up' },
+  { value: 'afternoon', label: 'Afternoon', hint: 'After lunch' },
+  { value: 'evening', label: 'Evening', hint: 'Wind down' },
+  { value: 'anytime', label: 'Anytime', hint: 'No cue' },
 ]
 
 export function HabitModal({ open, onClose, onSave, editingHabit }: HabitModalProps) {
@@ -45,6 +54,8 @@ export function HabitModal({ open, onClose, onSave, editingHabit }: HabitModalPr
   )
   const [estimatedDuration, setEstimatedDuration] = useState(editingHabit?.estimatedDuration ?? 15)
   const [notes, setNotes] = useState(editingHabit?.notes ?? '')
+  const [timeOfDay, setTimeOfDay] = useState<HabitTimeOfDay>(editingHabit?.timeOfDay ?? 'anytime')
+  const [saving, setSaving] = useState(false)
 
   // Contextual notification consent: ask when the user first enables reminders,
   // so the OS dialog appears with clear intent rather than out of nowhere.
@@ -60,9 +71,9 @@ export function HabitModal({ open, onClose, onSave, editingHabit }: HabitModalPr
     } catch { /* noop */ }
   }, [])
 
-  const handleSubmit = useCallback((e: React.FormEvent) => {
+  const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!name.trim()) return
+    if (!name.trim() || saving) return
 
     if (reminderEnabled) {
       void ensureNotificationPermission()
@@ -76,36 +87,41 @@ export function HabitModal({ open, onClose, onSave, editingHabit }: HabitModalPr
           ? repeatDays
           : undefined
 
-    onSave({
-      name: name.trim(),
-      description: description.trim() || undefined,
-      icon,
-      color,
-      category: category || 'health',
-      repeatType,
-      // Preserve existing repeatDays on edit for repeat types that don't redefine
-      // them (daily/monthly/custom) instead of clobbering them to undefined.
-      repeatDays: targetDays ?? editingHabit?.repeatDays,
-      repeatInterval: repeatType === 'custom' ? repeatInterval : editingHabit?.repeatInterval,
-      priority,
-      notificationEnabled: reminderEnabled,
-      alarmEnabled: reminderEnabled,
-      estimatedDuration: estimatedDuration > 0 ? estimatedDuration : undefined,
-      notes: notes.trim() || undefined,
-      reminder: {
-        enabled: reminderEnabled,
-        times: [reminderTime || '09:00'],
-        repeat: false,
-        sound: 'default',
-        vibration: true,
-        snoozed: false,
-        weekdayOnly: false,
-        weekendOnly: false,
-      },
-      timeOfDay: editingHabit?.timeOfDay ?? 'anytime',
-    })
-    onClose()
-  }, [name, description, icon, color, category, repeatType, repeatDays, repeatInterval, priority, reminderEnabled, estimatedDuration, notes, reminderTime, editingHabit, onSave, onClose, ensureNotificationPermission])
+    setSaving(true)
+    try {
+      const saved = await onSave({
+        name: name.trim(),
+        description: description.trim() || undefined,
+        icon,
+        color,
+        category: category || 'health',
+        repeatType,
+        // Preserve existing repeatDays on edit for repeat types that don't redefine
+        // them (daily/monthly/custom) instead of clobbering them to undefined.
+        repeatDays: targetDays ?? editingHabit?.repeatDays,
+        repeatInterval: repeatType === 'custom' ? repeatInterval : editingHabit?.repeatInterval,
+        priority,
+        notificationEnabled: reminderEnabled,
+        alarmEnabled: reminderEnabled,
+        estimatedDuration: estimatedDuration > 0 ? estimatedDuration : undefined,
+        notes: notes.trim() || undefined,
+        reminder: {
+          enabled: reminderEnabled,
+          times: [reminderTime || '09:00'],
+          repeat: false,
+          sound: 'default',
+          vibration: true,
+          snoozed: false,
+          weekdayOnly: false,
+          weekendOnly: false,
+        },
+        timeOfDay,
+      })
+      if (saved) onClose()
+    } finally {
+      setSaving(false)
+    }
+  }, [name, description, icon, color, category, repeatType, repeatDays, repeatInterval, priority, reminderEnabled, estimatedDuration, notes, reminderTime, timeOfDay, editingHabit, onSave, onClose, ensureNotificationPermission, saving])
 
   return (
     <Modal open={open} onClose={onClose} title={editingHabit ? 'Edit Habit' : 'New Habit'}>
@@ -134,7 +150,7 @@ export function HabitModal({ open, onClose, onSave, editingHabit }: HabitModalPr
         {/* Icon Picker */}
         <div>
           <label className="text-xs font-medium text-on-surface-variant mb-2 block uppercase tracking-wider">Icon</label>
-          <div className="grid grid-cols-7 gap-1.5">
+          <div className="grid grid-cols-6 xs:grid-cols-8 gap-1 w-full">
             {HABIT_ICONS.map((i) => (
               <motion.button
                 key={i}
@@ -142,14 +158,15 @@ export function HabitModal({ open, onClose, onSave, editingHabit }: HabitModalPr
                 onClick={() => setIcon(i)}
                 whileTap={{ scale: 0.9 }}
                 className={cn(
-                  'min-h-[44px] min-w-[44px] rounded-lg flex items-center justify-center text-base transition-all',
+                  'aspect-square min-h-[44px] rounded-lg flex items-center justify-center transition-all',
                   icon === i
                     ? 'bg-primary/20 text-primary ring-1 ring-primary/40'
                     : 'bg-surface-variant/30 text-on-surface-variant hover:bg-surface-variant/50'
                 )}
                 aria-label={`Select icon ${i}`}
+                aria-pressed={icon === i}
               >
-                <span className="text-[18px] leading-none">{habitIconEmoji(i)}</span>
+                <HabitIcon name={i} size={18} />
               </motion.button>
             ))}
           </div>
@@ -164,13 +181,18 @@ export function HabitModal({ open, onClose, onSave, editingHabit }: HabitModalPr
                 key={c}
                 type="button"
                 onClick={() => setColor(c)}
-                className={cn(
-                  'w-7 h-7 rounded-full transition-all',
-                  color === c ? 'ring-2 ring-primary ring-offset-2 ring-offset-background scale-110' : 'opacity-60 hover:opacity-100'
-                )}
-                style={{ backgroundColor: c }}
+                className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-full transition-all"
                 aria-label={`Select color ${c}`}
-              />
+                aria-pressed={color === c}
+              >
+                <span
+                  className={cn(
+                    'w-7 h-7 rounded-full block transition-all',
+                    color === c ? 'ring-2 ring-primary ring-offset-2 ring-offset-background scale-110' : 'opacity-60 hover:opacity-100'
+                  )}
+                  style={{ backgroundColor: c }}
+                />
+              </button>
             ))}
           </div>
         </div>
@@ -185,7 +207,7 @@ export function HabitModal({ open, onClose, onSave, editingHabit }: HabitModalPr
                 type="button"
                 onClick={() => setCategory(cat)}
                 className={cn(
-                  'px-3 py-1.5 rounded-lg text-xs font-medium transition-all capitalize flex items-center gap-1',
+                  'px-3 min-h-[44px] rounded-lg text-xs font-medium transition-all capitalize flex items-center gap-1',
                   category === cat
                     ? 'bg-primary/20 text-primary'
                     : 'bg-surface-variant/30 text-on-surface-variant hover:bg-surface-variant/50'
@@ -208,7 +230,7 @@ export function HabitModal({ open, onClose, onSave, editingHabit }: HabitModalPr
                 type="button"
                 onClick={() => setRepeatType(r)}
                 className={cn(
-                  'px-3 py-1.5 rounded-lg text-xs font-medium transition-all',
+                  'px-3 min-h-[44px] rounded-lg text-xs font-medium transition-all',
                   repeatType === r
                     ? 'bg-primary/20 text-primary'
                     : 'bg-surface-variant/30 text-on-surface-variant hover:bg-surface-variant/50'
@@ -229,7 +251,7 @@ export function HabitModal({ open, onClose, onSave, editingHabit }: HabitModalPr
                     d.includes(i) ? d.filter((n) => n !== i) : [...d, i]
                   )}
                   className={cn(
-                    'w-8 h-8 rounded-lg text-xs font-medium transition-all',
+                    'min-h-[44px] min-w-[44px] rounded-lg text-xs font-medium transition-all',
                     repeatDays.includes(i)
                       ? 'bg-primary/20 text-primary'
                       : 'bg-surface-variant/30 text-on-surface-variant'
@@ -267,13 +289,40 @@ export function HabitModal({ open, onClose, onSave, editingHabit }: HabitModalPr
                 type="button"
                 onClick={() => setPriority(p.value)}
                 className={cn(
-                  'flex-1 py-2 rounded-lg text-xs font-medium transition-all',
+                  'flex-1 min-h-[44px] rounded-lg text-xs font-medium transition-all',
                   priority === p.value
                     ? 'bg-primary/20 text-primary'
                     : 'bg-surface-variant/30 text-on-surface-variant'
                 )}
               >
                 {p.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Time of day — the cue */}
+        <div>
+          <label className="text-xs font-medium text-on-surface-variant mb-1 block uppercase tracking-wider">When</label>
+          <p className="text-[11px] leading-snug text-on-surface-variant/70 mb-2">
+            Anchoring a habit to a moment you already have beats relying on motivation.
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            {TIME_OF_DAY_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => setTimeOfDay(opt.value)}
+                aria-pressed={timeOfDay === opt.value}
+                className={cn(
+                  'min-h-[44px] rounded-xl px-3 py-2 text-left transition-all',
+                  timeOfDay === opt.value
+                    ? 'bg-primary/20 text-primary ring-1 ring-primary/40'
+                    : 'bg-surface-variant/30 text-on-surface-variant'
+                )}
+              >
+                <span className="block text-xs font-semibold leading-tight">{opt.label}</span>
+                <span className="block text-[10px] leading-tight opacity-70">{opt.hint}</span>
               </button>
             ))}
           </div>
@@ -302,17 +351,21 @@ export function HabitModal({ open, onClose, onSave, editingHabit }: HabitModalPr
             <button
               type="button"
               onClick={() => setReminderEnabled(!reminderEnabled)}
-              className={cn(
-                'w-10 h-6 rounded-full relative transition-all duration-200',
-                reminderEnabled ? 'bg-primary' : 'bg-surface-variant'
-              )}
+              className="min-h-[44px] min-w-[44px] flex items-center justify-center -mr-1.5 rounded-xl"
               aria-label="Toggle daily reminder"
               aria-pressed={reminderEnabled}
             >
-              <div className={cn(
-                'w-4 h-4 rounded-full bg-white absolute top-1 transition-all duration-200 shadow-xs',
-                reminderEnabled ? 'left-5' : 'left-1'
-              )} />
+              <span
+                className={cn(
+                  'w-10 h-6 rounded-full relative block transition-all duration-200',
+                  reminderEnabled ? 'bg-primary' : 'bg-surface-variant'
+                )}
+              >
+                <span className={cn(
+                  'w-4 h-4 rounded-full bg-white absolute top-1 transition-all duration-200 shadow-xs block',
+                  reminderEnabled ? 'left-5' : 'left-1'
+                )} />
+              </span>
             </button>
           </div>
 
@@ -330,19 +383,25 @@ export function HabitModal({ open, onClose, onSave, editingHabit }: HabitModalPr
           )}
         </div>
 
-        {/* Notes */}
-        <Textarea
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          placeholder="Notes (optional)..."
-          maxLength={2000}
-          rows={2}
-        />
+        {/* Identity (Atomic Habits: "I'm the kind of person who…") */}
+        <div>
+          <label htmlFor="habit-notes" className="text-xs font-medium text-on-surface-variant mb-2 block uppercase tracking-wider">
+            Who this makes you
+          </label>
+          <Textarea
+            id="habit-notes"
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder="I'm the kind of person who… (optional)"
+            maxLength={2000}
+            rows={2}
+          />
+        </div>
 
         <div className="flex gap-3 pt-4 border-t border-primary/10">
           <Button type="button" variant="secondary" onClick={onClose} className="flex-1">Cancel</Button>
-          <Button type="submit" disabled={!name.trim()} className="flex-1">
-            {editingHabit ? 'Save Changes' : 'Create Habit'}
+          <Button type="submit" disabled={!name.trim() || saving} className="flex-1">
+            {saving ? 'Saving…' : editingHabit ? 'Save Changes' : 'Create Habit'}
           </Button>
         </div>
       </form>

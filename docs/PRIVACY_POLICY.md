@@ -1,6 +1,6 @@
 # Privacy Policy
 
-**Last updated:** July 2026
+**Last updated:** October 2026
 
 ## Introduction
 
@@ -23,6 +23,9 @@ Student OS is designed with privacy as a core principle. **No account is require
 - **Habits:** Habit names, completion history. Stored locally.
 - **Focus sessions:** Duration, start/end times, subject tags, focus scores. Stored locally.
 - **Study events:** Calendar events, planner entries. Stored locally.
+- **Exams and assignments:** Exam dates, results, and assignment details. Stored locally.
+- **Syllabus and notes:** Syllabus topics and notes. Stored locally.
+- **Imported ambient audio:** Audio files you import for focus soundscapes, stored as blobs in the app's local database. Stored locally.
 - **Focus Shield (Deep Lock) data:** Blocked app names, distraction timestamps, interruption counts. Stored locally.
 - **Preferences:** Theme selection, timer settings, daily goals, display preferences. Stored locally.
 
@@ -35,8 +38,8 @@ Student OS **does not collect, transmit, or share** any of the following:
 - Financial information
 - Location data
 - Contact lists
-- Photos, media, or files
-- Browsing history
+- Photos, media, or files (the only file type you can add is ambient audio you import, which stays on-device)
+- Browsing history (a browser's page address is read in the moment only to compare against your own block list, and is never stored or transmitted)
 - Biometric data
 - Health information
 - Device identifiers (IMEI, serial number)
@@ -46,15 +49,15 @@ Student OS **does not collect, transmit, or share** any of the following:
 
 <!-- Sync source: components/compliance/accessibility-claims.ts (keep these paragraphs verbatim) -->
 
-Student OS uses the Android Accessibility Service **exclusively** for the Deep Lock feature during Focus Sessions.
+Student OS uses the Android Accessibility Service **only** for the Deep Lock feature during Focus Sessions that you start yourself.
 
-**Purpose:** Student OS uses the Android Accessibility Service to detect the foreground app during user-initiated focus sessions, in order to block distracting apps as part of the Deep Lock feature.
+**Purpose:** Student OS uses the Android Accessibility Service to detect the foreground app during user-initiated focus sessions, in order to block distracting apps as part of the Deep Lock feature. Inside YouTube and Instagram it also checks whether the short-form video player (Shorts / Reels) is on screen, using on-screen element identifiers and their bounds, so a focus session can end short-form browsing early. Inside a supported browser it reads the address of the page you are on, only to compare it with the website list you configured.
 
 ### Data Types Collected
 
 #### Other personal info
 
-The package name and display name of the app in the foreground (e.g., "Instagram"). This identifies which app the user is using, not any content within it.
+The package name and display name of the app in the foreground (e.g., "Instagram"); whether the short-form video player of YouTube or Instagram is currently open (a yes/no on-screen state, never the video, caption or post itself); and — only inside supported browsers — the address of the page currently open, which is compared on-device against the block list you configured. This identifies which app and page you are on, not any content within it.
 
 #### Other user-generated content
 
@@ -64,18 +67,20 @@ A local log of blocked-app attempts during focus sessions, containing the app na
 
 - Detects which app is in the foreground when a Focus Session is active.
 - Identifies blocked apps so the warning screen can be shown.
-- Logs distraction attempts for analytics.
+- Inside YouTube and Instagram, checks whether the Shorts / Reels player is open, using on-screen element identifiers and their bounds (never the video, caption, comments or post).
+- Inside a supported browser, reads the page address to compare it with your own block list.
+- Logs distraction attempts for your personal analytics.
 
 ### What the Accessibility Service Does NOT Do
 
-- **Does not** read screen content, passwords, messages, or text input.
-- **Does not** capture keystrokes or touch input.
-- **Does not** access personal communications (email, chat, social media content).
+- **Does not** read keystrokes, passwords, messages, form fields, or the content of pages you visit.
+- **Does not** read the video, caption, comments, or post in a short-form player.
+- **Does not** access personal communications (email, chat, social media messages).
 - **Does not** modify system settings outside of Focus Sessions.
 - **Does not** transmit any data off your device.
 - **Does not** read content from banking apps, password managers, or encrypted apps.
 
-The Accessibility Service does NOT read screen content, keystrokes, passwords, messages, or any data from apps not in the foreground. It is never active outside a user-started focus session and can be revoked at any time via Android Settings.
+The Accessibility Service does NOT read keystrokes, passwords, form fields, messages, or the content of pages you visit. It reads exactly three things: which app is in the foreground; whether the YouTube Shorts or Instagram Reels player is open (from on-screen element identifiers and their bounds — never the video, caption, comments or post itself); and, in a supported browser, the page address, used solely to match your own website block list and known adult domains. It is never active outside a user-started focus session and can be revoked at any time via Android Settings.
 
 All data stays on-device. Nothing is transmitted to our servers or third parties.
 
@@ -85,21 +90,45 @@ Users are shown a full-screen prominent disclosure explicitly naming these data 
 
 ## Foreground Service Usage
 
-Student OS runs a Foreground Service during Focus Sessions to:
+Student OS declares three foreground services, each of which runs only while its feature is active:
 
-- Maintain the timer accuracy when the app is in the background.
-- Enable Deep Lock to continue monitoring blocked apps.
-- Show a persistent notification indicating an active Focus Session.
+- **focus_session_timer** — maintains Focus Session timer accuracy when the app is in the background.
+- **alarm_playback** — plays a study or habit alarm you scheduled.
+- **focus_shield_monitoring** — lets Deep Lock continue monitoring blocked apps during a session.
 
-The Foreground Service is started when a Focus Session begins and is stopped when the session ends.
+Each foreground service shows a persistent notification and stops when its feature ends.
+
+## Foreground Access Permissions
+
+### Usage Access
+
+Usage Access (`PACKAGE_USAGE_STATS`) is requested only for the Deep Lock feature. It identifies which app is currently in the foreground so distractions can be blocked during Focus Sessions. This information is processed on-device only and is never uploaded.
+
+### Do Not Disturb Access
+
+Do Not Disturb access (`ACCESS_NOTIFICATION_POLICY`) is optional and off by default. If enabled, Student OS can silence interruptions while a Focus Session runs. It can be revoked at any time in Settings → Notifications → Do Not Disturb access.
+
+### Exact Alarms
+
+Exact alarms (`SCHEDULE_EXACT_ALARM`) are used to fire study and habit reminders at the precise times you choose. Scheduled alarms are restored after a device reboot (`RECEIVE_BOOT_COMPLETED`). All schedules stay on your device.
+
+### Battery Optimization Exemption
+
+You may grant a battery optimization exemption (`REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`) so Focus Sessions and alarms continue reliably in the background. This is optional and can be revoked at any time in system Settings.
+
+### Full-screen Alarm Alerts
+
+A study or habit alarm you scheduled can appear full-screen so it is never missed. This uses the Android `USE_FULL_SCREEN_INTENT` permission and applies to alarms only — motivational reminders no longer use it. On Android 14+ you can grant or revoke it anytime in Settings → Apps → Student OS → Notifications. Alarms still ring without it.
 
 ## Data Storage
 
 All data is stored **locally on your device** using:
 
 - **localStorage:** Application state, preferences, tasks, habits, sessions, events.
+- **IndexedDB:** Imported ambient audio (stored as blobs) and data export/import functionality.
 - **SharedPreferences (Android):** Focus Shield statistics and distraction records.
-- **IndexedDB (optional):** Used for data export/import functionality.
+- **Room database (Android):** Deep Lock records (`focus_shield_db`).
+- **Jetpack DataStore (Android):** Shield settings, theme, accent color, and onboarding state.
 
 **No data is stored on remote servers, cloud services, or third-party infrastructure.**
 
@@ -121,10 +150,11 @@ If we add optional analytics in the future, it will be opt-in only and clearly d
 
 ## Notifications
 
-Student OS may request notification permissions to:
+Student OS may request notification permissions (`POST_NOTIFICATIONS`) to:
 
 - Alert you when a Focus Session completes.
 - Inform you when a blocked app was detected during a session.
+- Deliver the study or habit alarms you scheduled.
 
 Notifications are processed locally. No notification data is transmitted off your device.
 

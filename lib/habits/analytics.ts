@@ -224,14 +224,13 @@ export function generateHabitPatterns(habits: Habit[]): { icon: string; message:
     })
   }
 
+  const today = format(new Date(), 'yyyy-MM-dd')
+  const yesterday = format(subDays(new Date(), 1), 'yyyy-MM-dd')
+
   const atRisk = active.filter((h) => {
-    const cs = resolveStreak(h)
-    if (cs <= 0) return false
-    const today = format(new Date(), 'yyyy-MM-dd')
+    if (resolveStreak(h) <= 0) return false
     const dates = resolveCompletedDates(h)
-    if (dates.includes(today)) return false
-    const yesterday = format(subDays(new Date(), 1), 'yyyy-MM-dd')
-    return dates.includes(yesterday)
+    return !dates.includes(today) && dates.includes(yesterday)
   })
 
   if (atRisk.length > 0) {
@@ -242,5 +241,31 @@ export function generateHabitPatterns(habits: Habit[]): { icon: string; message:
     })
   }
 
-  return insights
+  // Atomic Habits — "never miss twice": one missed day is an accident, two in a
+  // row is the start of a new (bad) habit. Answer it with the two-minute rule
+  // rather than with guilt. Habits with no history yet have nothing to miss.
+  const missedTwice = active.filter((h) => {
+    if (!isHabitDueOnDate(h, today)) return false
+    const dates = resolveCompletedDates(h)
+    if (dates.length === 0) return false
+    if (dates.includes(today) || dates.includes(yesterday)) return false
+    return !resolveSkippedDates(h).includes(today)
+  })
+
+  if (missedTwice.length > 0) {
+    insights.push({
+      icon: '🌱',
+      message: missedTwice.length === 1
+        ? `Never miss twice — give "${missedTwice[0].name}" just two minutes today.`
+        : `Never miss twice — pick one of ${missedTwice.length} habits and do the two-minute version.`,
+      type: 'info',
+    })
+  }
+
+  // The view renders only the first three insights, so actionable nudges
+  // ("save your streak", "never miss twice") must come before generic praise.
+  return [
+    ...insights.filter((insight) => insight.type === 'warning' || insight.type === 'info'),
+    ...insights.filter((insight) => insight.type !== 'warning' && insight.type !== 'info'),
+  ]
 }

@@ -425,7 +425,7 @@ export const MobileNav = memo(function MobileNav() {
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-mobile-nav lg:hidden mobile-bottom-nav" aria-label="Mobile navigation">
       <div className="bg-card/95 backdrop-blur-sm border-t border-border shadow-2xl nav-safe-bottom">
-        <div className="flex" role="list">
+        <div className="flex max-w-xl mx-auto w-full" role="list">
           {navItems.map((item) => {
             const isActive = activeView === item.id || PARENT_VIEW[activeView] === item.id
             const Icon = item.icon
@@ -435,31 +435,29 @@ export const MobileNav = memo(function MobileNav() {
                 onClick={() => setActiveView(item.id as typeof activeView)}
                 aria-current={isActive ? 'page' : undefined}
                 aria-label={item.label}
+                title={item.label}
                 className={cn(
-                  'flex flex-col items-center justify-center gap-0.5 py-2 px-1 flex-1 min-w-0 transition-colors relative',
-                  'min-h-[48px] min-w-[48px]',
-                  isActive ? 'text-foreground' : 'text-muted-foreground/60'
+                  'flex items-center justify-center flex-1 min-w-0 transition-colors relative',
+                  'min-h-[48px] xs:min-h-[52px]',
+                  isActive ? 'text-primary' : 'text-muted-foreground/60'
                 )}
               >
                 <motion.div
-                  className="relative"
+                  className="relative flex items-center justify-center"
                   whileTap={{ scale: 0.85 }}
                   transition={{ type: 'spring', stiffness: 400, damping: 22 }}
                 >
                   {isActive && (
                     <motion.div
-                      className="absolute -top-1 left-1/2 -translate-x-1/2 w-5 h-0.5 rounded-full bg-primary"
+                      className="absolute -top-2 left-1/2 -translate-x-1/2 w-6 h-0.5 rounded-full bg-primary"
                       initial={{ opacity: 0, scale: 0.5 }}
                       animate={{ opacity: 1, scale: 1 }}
                       exit={{ opacity: 0, scale: 0.5 }}
                       transition={{ type: 'spring', stiffness: 400, damping: 28 }}
                     />
                   )}
-                  <Icon className="w-5 h-5" aria-hidden="true" />
+                  <Icon className={cn('w-5 h-5 xs:w-[22px] xs:h-[22px] shrink-0', isActive ? 'text-primary' : 'text-muted-foreground/70')} aria-hidden="true" />
                 </motion.div>
-                <span className={cn('text-[10px] leading-none font-medium whitespace-nowrap', isActive && 'text-primary')}>
-                  {item.label}
-                </span>
               </button>
             )
           })}

@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- YouTube Study Mode gate. Covers the Home/browse feed only; Search and
+     videos are left usable. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/studyRoot"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/dl_warning_root"
+    android:clickable="true"
+    android:focusable="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:background="@drawable/dl_glass_card"
+        android:gravity="center_horizontal"
+        android:orientation="vertical"
+        android:paddingHorizontal="24dp"
+        android:paddingVertical="28dp">
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="@drawable/dl_pill_shield"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingHorizontal="14dp"
+            android:paddingVertical="6dp">
+
+            <View
+                android:layout_width="8dp"
+                android:layout_height="8dp"
+                android:background="@drawable/dl_ring_center"
+                android:backgroundTint="@color/dl_primary" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:letterSpacing="0.08"
+                android:text="STUDY MODE"
+                android:textColor="@color/dl_primary"
+                android:textSize="10sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:text="YouTube Study Mode"
+            android:textColor="@color/dl_on_surface"
+            android:textSize="24sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:gravity="center"
+            android:lineSpacingExtra="3dp"
+            android:text="The Home feed is off so the algorithm can't pull you in. Search for exactly what you need — search results and videos still work."
+            android:textColor="@color/dl_on_surface_variant"
+            android:textSize="15sp" />
+
+        <Button
+            android:id="@+id/btnSearchYouTube"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:layout_marginTop="26dp"
+            android:background="@drawable/dl_btn_primary"
+            android:text="Search YouTube"
+            android:textAllCaps="false"
+            android:textColor="@color/dl_on_primary"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+
+        <Button
+            android:id="@+id/btnLeaveStudy"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/dl_btn_secondary"
+            android:text="Leave to study"
+            android:textAllCaps="false"
+            android:textColor="@color/dl_on_surface"
+            android:textSize="16sp" />
+    </LinearLayout>
+</FrameLayout>

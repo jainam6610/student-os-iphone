@@ -361,13 +361,14 @@ export function getFocusDataForRange(
   const brk: number[] = period.map(() => 0)
   for (const s of sessions) {
     const pauseMin = s.pauseMinutes ?? 0
+    const storedBreak = s.breakMinutes ?? 0
     const isBreak = s.type === 'break'
-    if (!isBreak && pauseMin <= 0) continue
+    if (!isBreak && pauseMin <= 0 && storedBreak <= 0) continue
     const d = getSessionDateOf(s)
     if (!d || d.getTime() > now.getTime()) continue
     const i = getPeriodIndex(period, d)
     if (i < 0) continue
-    brk[i] += isBreak ? sessionDuration(s) : pauseMin
+    brk[i] += isBreak ? Math.max(sessionDuration(s), storedBreak) : pauseMin + storedBreak
   }
 
   const totalFocusMinutes = focus.reduce((a, b) => a + b, 0)

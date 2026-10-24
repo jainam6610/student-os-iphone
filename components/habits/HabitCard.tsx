@@ -2,8 +2,10 @@
 
 import { memo, useCallback } from 'react'
 import { motion } from 'framer-motion'
-import { type Habit, habitIconEmoji } from '@/lib/habits/types'
-import { getTodayStr } from '@/lib/habits/utils'
+import { type Habit } from '@/lib/habits/types'
+import { HabitIcon } from './HabitIcon'
+import { getTodayStr, formatHabitCueTime } from '@/lib/habits/utils'
+import { HABIT_TIME_OF_DAY_LABELS } from '@/lib/habits/types'
 import { cn } from '@/lib/utils'
 import { staggerItem } from '@/components/motion'
 import { Pencil, Archive, Trash2 } from 'lucide-react'
@@ -33,6 +35,18 @@ export const HabitCard = memo(function HabitCard({
   const isCompleted = habit.completedDates.includes(today)
   const isSkipped = habit.skippedDates?.includes(today)
   const isRinging = ringingAlarmHabitId === habit.id
+
+  // Atomic Habits cue line: when + how long, so the card states the intention
+  // instead of only the name. Falls back to nothing when a habit has no cue.
+  const cueParts: string[] = []
+  const timeOfDay = habit.timeOfDay ?? 'anytime'
+  if (timeOfDay !== 'anytime') cueParts.push(HABIT_TIME_OF_DAY_LABELS[timeOfDay])
+  if (habit.reminder?.enabled) {
+    const clock = formatHabitCueTime(habit.reminder.times?.[0])
+    if (clock) cueParts.push(clock)
+  }
+  if (habit.estimatedDuration) cueParts.push(`${habit.estimatedDuration} min`)
+  const cue = cueParts.join(' · ')
 
   const handleToggle = useCallback(() => {
     onToggle(habit.id)
@@ -84,7 +98,7 @@ export const HabitCard = memo(function HabitCard({
             : 'bg-surface-variant/50 text-on-surface-variant border-primary/10',
           isRinging && 'border-error/30 bg-error/10 text-error'
         )}>
-          <span className="text-[20px] leading-none">{habitIconEmoji(habit.icon)}</span>
+          <HabitIcon name={habit.icon} size={20} />
         </div>
         <div className="min-w-0">
           <h4 className={cn(
@@ -93,9 +107,14 @@ export const HabitCard = memo(function HabitCard({
           )}>
             {habit.name}
           </h4>
-          <p className="text-xs text-on-surface-variant">
+          <p className="text-xs text-on-surface-variant truncate">
             {(habit.currentStreak ?? habit.streak ?? 0) > 0 ? `${habit.currentStreak ?? habit.streak ?? 0} day streak` : habit.category ? `${habit.category}` : 'No streak'}
           </p>
+          {cue && (
+            <p className="text-[10px] leading-tight text-on-surface-variant/60 truncate mt-0.5">
+              {cue}
+            </p>
+          )}
         </div>
       </div>
 

@@ -58,7 +58,12 @@ const createSafeStorage = () => ({
   setItem: (name: string, value: string) => {
     const result = safeWrite(name, value)
     if (!result.success) {
-      if (result.error) console.error('Storage write failed:', result.error)
+      // Zustand may serialize during Next.js static prerendering, where
+      // localStorage is intentionally unavailable. Avoid reporting that
+      // expected server-side no-op as a storage failure.
+      if (result.error && result.error !== 'localStorage not available') {
+        console.error('Storage write failed:', result.error)
+      }
     }
   },
   removeItem: (name: string) => {

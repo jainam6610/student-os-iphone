@@ -18,6 +18,7 @@ import { AccessibilityDisclosure } from '@/components/compliance/AccessibilityDi
 import { AlarmManager } from '@/components/AlarmManager'
 import { MotivationManager } from '@/components/motivation/MotivationManager'
 import { focusService } from '@/Focus/service/FocusService'
+import { syncShieldSettingsToNative } from '@/lib/deep-lock/shield-sync'
 import { vibrate } from '@/lib/notifications'
 
 const Dashboard = lazy(() => import('@/components/dashboard').then(m => ({ default: m.Dashboard })))
@@ -158,6 +159,19 @@ export default function StudentOS() {
     setMounted(true)
     const wasOnboarded = checkOnboardingComplete()
     setShowIntro(wasOnboarded)
+  }, [])
+
+  // Push the persisted Focus Shield settings (block lists + content filters)
+  // into the native engine on boot and every time the app comes back to the
+  // foreground. Without this the accessibility service silently runs on its
+  // defaults after a process death, so content filters looked "broken".
+  useEffect(() => {
+    void syncShieldSettingsToNative()
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') void syncShieldSettingsToNative()
+    }
+    document.addEventListener('visibilitychange', handleVisibility)
+    return () => document.removeEventListener('visibilitychange', handleVisibility)
   }, [])
 
   // Global handler for native navigation requests (e.g., WarningActivity → Focus)

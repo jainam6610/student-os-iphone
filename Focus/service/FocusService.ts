@@ -2,6 +2,9 @@ import type { FocusSession } from './FocusTypes'
 import { focusEventBus } from './FocusEvents'
 import { nativeBridge, type NativeFocusCompletion, type NativeFocusSessionState } from './NativeBridge'
 import { useStore } from '@/lib/store'
+import { playCompletionChime } from '../utils/chime'
+import { showMotivation } from '@/lib/motivation/deliver'
+import { syncShieldSettingsToNative } from '@/lib/deep-lock/shield-sync'
 
 function statusToEventType(status: FocusSession['status'], alreadyRunning: boolean): import('./FocusTypes').FocusEventType {
   if (status === 'running') return alreadyRunning ? 'sessionResumed' : 'sessionStarted'
@@ -25,6 +28,10 @@ class FocusService {
   private _pausedAccumulatedMs = 0
   private _pausedSegmentStart = 0
   private _pauseCount = 0
+  // Break time is timestamp-tracked exactly like pause time (no counters), so
+  // it survives refresh/sleep without drift.
+  private _breakAccumulatedMs = 0
+  private _breakSegmentStart = 0
   private _isRunning = false
   private _completed = false
   private _sessionId = ''
@@ -91,6 +98,18 @@ class FocusService {
     return this.currentPausedMs()
   }
 
+  /** Live break time: accumulated break segments + the currently-open one. */
+  private currentBreakMs(): number {
+    if (this._breakSegmentStart > 0) {
+      return this._breakAccumulatedMs + (Date.now() - this._breakSegmentStart)
+    }
+    return this._breakAccumulatedMs
+  }
+
+  getBreakElapsedMs(): number {
+    return this.currentBreakMs()
+  }
+
   private makeSession(status: FocusSession['status']): FocusSession {
     const elapsed = this.currentElapsedMs()
     const remaining = Math.max(0, this._plannedMs - elapsed)
@@ -106,6 +125,7 @@ class FocusService {
       remaining: Math.floor(remaining / 1000),
       pausedDuration: Math.round(this.currentPausedMs() / 1000),
       pauseCount: this._pauseCount,
+      breakMinutes: Math.round(this.currentBreakMs() / 60000),
       completed: status === 'completed',
       interrupted: status === 'cancelled',
     }
@@ -145,6 +165,8 @@ class FocusService {
     this._pausedAccumulatedMs = 0
     this._pausedSegmentStart = 0
     this._pauseCount = 0
+    this._breakAccumulatedMs = 0
+    this._breakSegmentStart = 0
     this._isRunning = false
     this._strict = false
     this._nativeSessionId = null
@@ -168,6 +190,8 @@ class FocusService {
             pausedAccumulatedMs: this._pausedAccumulatedMs,
             pausedSegmentStart: this._pausedSegmentStart,
             pauseCount: this._pauseCount,
+            breakAccumulatedMs: this._breakAccumulatedMs,
+            breakSegmentStart: this._breakSegmentStart,
             isRunning: this._isRunning,
           })
         )
@@ -202,6 +226,8 @@ class FocusService {
         pausedAccumulatedMs?: number
         pausedSegmentStart?: number
         pauseCount?: number
+        breakAccumulatedMs?: number
+        breakSegmentStart?: number
         isRunning?: boolean
       }
       const plannedMs = typeof s.plannedMs === 'number' ? s.plannedMs : 0
@@ -213,6 +239,8 @@ class FocusService {
       this._accumulatedMs = typeof s.accumulatedMs === 'number' ? s.accumulatedMs : 0
       this._pausedAccumulatedMs = typeof s.pausedAccumulatedMs === 'number' ? s.pausedAccumulatedMs : 0
       this._pauseCount = typeof s.pauseCount === 'number' ? s.pauseCount : 0
+      this._breakAccumulatedMs = typeof s.breakAccumulatedMs === 'number' ? s.breakAccumulatedMs : 0
+      this._breakSegmentStart = typeof s.breakSegmentStart === 'number' ? s.breakSegmentStart : 0
       this._isRunning = Boolean(s.isRunning)
       this._segmentStart = this._isRunning
         ? (typeof s.segmentStart === 'number' ? s.segmentStart : Date.now())
@@ -252,6 +280,11 @@ class FocusService {
         this.reportedSessionIds.add(session.sessionId)
         if (this._nativeSessionId) this.reportedSessionIds.add(this._nativeSessionId)
         this._onSessionCompleted?.(session)
+        // page.tsx owns session creation, so the timestamp-measured break
+        // minutes are attached to the record it just wrote.
+        if (session.kind === 'break' && session.breakMinutes > 0) {
+          useStore.getState().setLatestSessionBreakMinutes(session.breakMinutes)
+        }
       }
     } catch (error) {
       if (process.env.NODE_ENV === 'development') {
@@ -265,11 +298,15 @@ class FocusService {
   private finishSession(status: 'completed' | 'cancelled', elapsedMs = this.currentElapsedMs(), stopNative = true): void {
     if (this._completed || !this._session) return
     this._completed = true
+    useStore.getState().setDeepLockError(null)
     this.stopInterval()
     this._isRunning = false
     this._segmentStart = 0
     this._accumulatedMs = Math.min(this._plannedMs, Math.max(0, elapsedMs))
     const terminal = this.makeSession(status)
+    // Close the open break segment so the total is frozen into the session.
+    this._breakAccumulatedMs = this.currentBreakMs()
+    this._breakSegmentStart = 0
     this._session = terminal
     this.publishSnapshot()
     // Report + clear internal state BEFORE dispatching the terminal event.
@@ -286,7 +323,17 @@ class FocusService {
   }
 
   private completeSession(): void {
+    // Settings → Focus → "Completion sound". Only for focus sessions, and only
+    // when the user left the toggle on (default true).
+    const wasFocus = this._kind === 'focus'
     this.finishSession('completed', this._plannedMs)
+    if (wasFocus) {
+      if (useStore.getState().timerSettings?.notificationEnabled !== false) {
+        playCompletionChime()
+      }
+      // Contextual "win" trigger — notification only, throttled globally.
+      void showMotivation('win')
+    }
   }
 
   init(): void {
@@ -395,6 +442,7 @@ class FocusService {
       remaining: Math.floor(remainingMs / 1000),
       pausedDuration: 0,
       pauseCount: 0,
+      breakMinutes: 0,
       completed: false,
       interrupted: false,
     }
@@ -431,6 +479,7 @@ class FocusService {
         remaining: Math.max(0, Math.floor((plannedMs - elapsedMs) / 1000)),
         pausedDuration: 0,
         pauseCount: 0,
+        breakMinutes: 0,
         completed: false,
         interrupted: false,
       }
@@ -449,20 +498,46 @@ class FocusService {
     this._pausedAccumulatedMs = 0
     this._pausedSegmentStart = 0
     this._pauseCount = 0
+    this._breakAccumulatedMs = 0
+    this._breakSegmentStart = kind === 'break' ? Date.now() : 0
     this._segmentStart = Date.now()
     this._completed = false
     this.emit('running')
     this._isRunning = true
     this.startInterval()
     this.persistSession()
-    // Breaks never arm native blocking (Deep Lock). Focus sessions arm it as
-    // an optional layer whose availability must never gate the timer itself.
-    if (kind === 'break') return
+    if (kind === 'focus') {
+      // Contextual "start" trigger — notification only, throttled globally.
+      void showMotivation('start')
+    }
+    const store = useStore.getState()
+    const whitelist = store.whitelistedApps ?? []
+    const breakBlocked = store.breakBlockedApps ?? []
+    const alwaysBlocked = store.alwaysBlockedApps ?? []
     const jsSessionId = this._sessionId
-    const whitelist = useStore.getState().whitelistedApps ?? []
-    void nativeBridge.start(durationMinutes, whitelist, this._strict).then((nativeSessionId) => {
-      if (this._sessionId === jsSessionId) this._nativeSessionId = nativeSessionId
-    })
+
+    const arm = () => {
+      // Break sessions still need native armed: the always/break lists must be
+      // enforced during the break, and the engine must know a session exists so
+      // 24/7 blocks stay observed. Mode 'break' keeps it from becoming a full lock.
+      if (kind === 'break') {
+        void nativeBridge.start(durationMinutes, whitelist, false, breakBlocked, 'break').then((nativeSessionId) => {
+          if (this._sessionId === jsSessionId) this._nativeSessionId = nativeSessionId
+        })
+        return
+      }
+      void nativeBridge.start(durationMinutes, whitelist, this._strict, breakBlocked).then((nativeSessionId) => {
+        if (this._sessionId === jsSessionId) this._nativeSessionId = nativeSessionId
+      })
+    }
+
+    // Push the persisted lists/filters before arming. Starting without this could
+    // arm native from a stale snapshot, so an app added seconds earlier ran free.
+    if (whitelist.length > 0 || breakBlocked.length > 0 || alwaysBlocked.length > 0) {
+      void syncShieldSettingsToNative().then(arm, arm)
+    } else {
+      arm()
+    }
   }
 
   pause(): void {
@@ -514,6 +589,8 @@ class FocusService {
     this._pauseCount = 0
     this._pausedAccumulatedMs = 0
     this._pausedSegmentStart = 0
+    this._breakAccumulatedMs = 0
+    this._breakSegmentStart = 0
     this._strict = false
     this.initialized = false
   }
