@@ -63,6 +63,11 @@ const createSafeStorage = () => ({
       // expected server-side no-op as a storage failure.
       if (result.error && result.error !== 'localStorage not available') {
         console.error('Storage write failed:', result.error)
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('storage-quota-exceeded', {
+            detail: { error: result.error, compacted: result.compacted },
+          }))
+        }
       }
     }
   },

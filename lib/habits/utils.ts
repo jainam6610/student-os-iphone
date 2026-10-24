@@ -1,4 +1,4 @@
-import { format, subDays, parse, addDays, differenceInDays, eachDayOfInterval, getDay } from 'date-fns'
+import { format, subDays, parse, addDays, differenceInCalendarDays, eachDayOfInterval, getDay } from 'date-fns'
 import { type Habit, type RepeatType, type HabitHistoryEntry, type HabitDailySummary } from './types'
 import { generateId } from '@/lib/utils'
 
@@ -19,11 +19,28 @@ export function resolveArchived(habit: Habit): boolean {
 }
 
 export function resolveCompletedDates(habit: Habit): string[] {
-  return Array.isArray(habit.completedDates) ? habit.completedDates : []
+  if (!Array.isArray(habit.completedDates)) return []
+  const dates = new Set<string>()
+  for (const value of habit.completedDates as unknown[]) {
+    if (typeof value === 'string') {
+      const key = value.split('T')[0]
+      if (/^\d{4}-\d{2}-\d{2}$/.test(key)) dates.add(key)
+    } else if (value instanceof Date && !Number.isNaN(value.getTime())) {
+      dates.add(format(value, 'yyyy-MM-dd'))
+    }
+  }
+  return [...dates]
 }
 
 export function resolveSkippedDates(habit: Habit): string[] {
-  return Array.isArray(habit.skippedDates) ? habit.skippedDates : []
+  if (!Array.isArray(habit.skippedDates)) return []
+  return (habit.skippedDates as unknown[]).flatMap((value) => {
+    if (typeof value === 'string') {
+      const key = value.split('T')[0]
+      return /^\d{4}-\d{2}-\d{2}$/.test(key) ? [key] : []
+    }
+    return value instanceof Date && !Number.isNaN(value.getTime()) ? [format(value, 'yyyy-MM-dd')] : []
+  })
 }
 
 export function resolveReminder(habit: Habit) {
@@ -120,9 +137,10 @@ export function calculateLongestStreak(completedDates: string[]): number {
 export function calculateCompletionRate(completedDates: string[], days: number = 30): number {
   if (days <= 0) return 0
   const interval = eachDayOfInterval({ start: subDays(new Date(), days - 1), end: new Date() })
+  const completedKeys = toDateKeySet(completedDates)
   let completed = 0
   for (const d of interval) {
-    if (completedDates.includes(format(d, 'yyyy-MM-dd'))) completed++
+    if (completedKeys.has(format(d, 'yyyy-MM-dd'))) completed++
   }
   return Math.round((completed / Math.min(days, interval.length)) * 100)
 }
@@ -156,7 +174,7 @@ export function shouldHabitBeDoneToday(habit: Habit): boolean {
     case 'custom': {
       if (!habit.repeatInterval || habit.repeatInterval <= 1) return true
       if (!habit.createdAt) return true
-      const diff = differenceInDays(today, new Date(habit.createdAt))
+      const diff = differenceInCalendarDays(today, new Date(habit.createdAt))
       return diff % habit.repeatInterval === 0
     }
     default:
@@ -380,7 +398,7 @@ export function isHabitDueOnDate(habit: Habit, dateStr: string): boolean {
     case 'custom':
       if (!habit.repeatInterval || habit.repeatInterval <= 1) return true
       if (!habit.createdAt) return true
-      const diff = differenceInDays(date, new Date(habit.createdAt))
+      const diff = differenceInCalendarDays(date, new Date(habit.createdAt))
       return diff % habit.repeatInterval === 0
     default:
       return true

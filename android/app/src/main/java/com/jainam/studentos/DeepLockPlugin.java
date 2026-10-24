@@ -21,6 +21,8 @@ import androidx.core.app.ActivityCompat;
 
 import com.jainam.studentos.focusshield.FocusShieldBridge;
 import com.jainam.studentos.focusshield.FocusShieldManager;
+import com.jainam.studentos.focusshield.data.AppDatabase;
+import com.jainam.studentos.alarm.AlarmScheduler;
 
 import android.os.Handler;
 import android.os.Looper;
@@ -852,31 +854,48 @@ public class DeepLockPlugin extends Plugin {
         call.resolve();
     }
 
-    @PluginMethod
+     @PluginMethod
     public void clearAllData(PluginCall call) {
-        // TODO: This method clears SharedPreferences but Zustand data lives in
-        // WebView localStorage, not SharedPreferences. The prefs2.clear() call
-        // does not actually wipe the app's task/habit/progress data. The JS-side
-        // clearAllData in settings.tsx (localStorage.removeItem) works correctly.
-        // To fix: use Capacitor WebView data clearing APIs or bridge to JS clear.
-        Log.d(TAG, "entering clearAllData");
-        try {
-            android.content.Context ctx = getContext();
-            // Clear all SharedPreferences (Zustand persistence, etc.)
-            android.content.SharedPreferences prefs = ctx.getSharedPreferences("CapacitorStorage", android.content.Context.MODE_PRIVATE);
-            prefs.edit().clear().apply();
-            android.content.SharedPreferences prefs2 = ctx.getSharedPreferences("student-os-storage-v3", android.content.Context.MODE_PRIVATE);
-            prefs2.edit().clear().apply();
-            // Clear WebView data
-            android.webkit.WebViewDatabase.getInstance(ctx).clearHttpAuthUsernamePassword();
-            call.resolve();
-        } catch (Exception e) {
-            Log.e(TAG, "clearAllData — FAILED: " + e.getMessage());
-            call.reject("Failed to clear local data: " + e.getMessage());
+        Log.i(TAG, "clearAllData — clearing app data and alarms");
+        Context ctx = getContext();
+        if (ctx == null) {
+            call.reject("Context unavailable");
+            return;
         }
-        Log.d(TAG, "exiting clearAllData");
+        try {
+            FocusShieldManager manager = FocusShieldBridge.getManager();
+            if (manager != null) manager.endSession();
+            new AlarmScheduler(ctx).cancelAll();
+            String[] preferenceFiles = {
+                PREFS_NAME,
+                "CapacitorStorage",
+                "student-os-storage-v3",
+                "student_os_alarm",
+                "student_os_alarms",
+                "student_os_thoughts"
+            };
+            for (String preferenceFile : preferenceFiles) {
+                ctx.getSharedPreferences(preferenceFile, Context.MODE_PRIVATE)
+                    .edit().clear().commit();
+            }
+            AppDatabase.clearAllPersistedData(ctx, error -> {
+                mainHandler.post(() -> {
+                if (error != null) {
+                    Log.e(TAG, "clearAllData — native database wipe failed: " + error);
+                    call.reject("Failed to clear native data: " + error);
+                    return;
+                }
+                JSObject result = new JSObject();
+                result.put("success", true);
+                call.resolve(result);
+                });
+                return kotlin.Unit.INSTANCE;
+            });
+        } catch (Exception e) {
+            Log.e(TAG, "clearAllData — FAILED", e);
+            call.reject("Failed to clear native data: " + e.getMessage());
+        }
     }
-
     @PluginMethod
     public void requestScreenPinning(PluginCall call) {
         Log.d(TAG, "entering requestScreenPinning");

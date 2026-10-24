@@ -14,6 +14,8 @@ type AlarmState = {
   habitId: string
 } | null
 
+const ALARM_CLEARED_EVENT = 'student-os:alarm-cleared'
+
 export function AlarmManager() {
   const [alarm, setAlarm] = useState<AlarmState>(null)
   const [showOverlay, setShowOverlay] = useState(false)
@@ -32,12 +34,14 @@ export function AlarmManager() {
   const handleDismiss = useCallback(async () => {
     try { await Alarm.dismissAlarm() } catch { /* ignore */ }
     clearAlarm()
+    window.dispatchEvent(new Event(ALARM_CLEARED_EVENT))
     showToast({ type: 'success', title: 'Alarm dismissed', description: '' })
   }, [clearAlarm, showToast])
 
   const handleSnooze = useCallback(async (minutes: number) => {
     try { await Alarm.snoozeAlarm({ minutes }) } catch { /* ignore */ }
     clearAlarm()
+    window.dispatchEvent(new Event(ALARM_CLEARED_EVENT))
     showToast({ type: 'info', title: `Alarm snoozed for ${minutes} min`, description: '' })
   }, [clearAlarm, showToast])
 
@@ -48,6 +52,8 @@ export function AlarmManager() {
 
   useEffect(() => {
     let removeListener: (() => void) | undefined
+    const handleExternalDismiss = () => clearAlarm()
+    window.addEventListener(ALARM_CLEARED_EVENT, handleExternalDismiss)
 
     Alarm.getActiveAlarm().then((result) => {
       if (result.active && result.entityId) {
@@ -77,8 +83,11 @@ export function AlarmManager() {
       removeListener = handle.remove ?? handle.removeListener
     }).catch(() => {})
 
-    return () => { removeListener?.() }
-  }, [])
+    return () => {
+      window.removeEventListener(ALARM_CLEARED_EVENT, handleExternalDismiss)
+      removeListener?.()
+    }
+  }, [clearAlarm])
 
   useEffect(() => {
     if (!showOverlay && alarm) {

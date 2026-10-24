@@ -2,7 +2,7 @@ import { Capacitor } from '@capacitor/core'
 import type { Habit, StudyEvent } from './store'
 import { useStore } from './store'
 import Alarm from '@/lib/plugins/alarm-plugin'
-import { getTodayStr, isHabitDueOnDate } from '@/lib/habits/utils'
+import { getTodayStr, isHabitDueOnDate, resolveCompletedDates } from '@/lib/habits/utils'
 
 const browserTimers = new Map<string, ReturnType<typeof setTimeout>>()
 
@@ -10,6 +10,8 @@ const MIGRATION_KEY = 'student-os-alarm-migration-v1'
 
 const lastHabitIds = new Map<string, string[]>()
 let lastPlannerIds = new Set<string>()
+let lastKnownExactPermission: boolean | null = null
+let exactAlarmRequestPending = false
 
 let syncQueue: Promise<void> = Promise.resolve()
 
@@ -40,9 +42,11 @@ function isNative(): boolean {
  * Fires an in-app explainer just before the OS exact-alarm screen appears,
  * so users understand why it opened. AlarmManager listens for this event.
  */
-function requestExactAlarmWithNotice(): void {
+async function requestExactAlarmWithNotice(): Promise<void> {
+  if (exactAlarmRequestPending) return
+  exactAlarmRequestPending = true
   try { window.dispatchEvent(new CustomEvent('exact-alarm-permission-requested')) } catch { /* noop */ }
-  void Alarm.requestExactAlarmPermission().catch(() => {})
+  try { await Alarm.requestExactAlarmPermission() } catch { /* the OS settings screen may be unavailable */ }
 }
 
 async function runOneTimeMigration(): Promise<void> {
@@ -189,26 +193,31 @@ export async function dismissAlarm(): Promise<void> {
   }
 }
 
-export async function syncHabitAlarms(habits: Habit[]): Promise<void> {
-  return serialized(() => syncHabitAlarmsImpl(habits))
+export async function syncHabitAlarms(habits: Habit[], forceRescheduleHabitIds: string[] = []): Promise<void> {
+  return serialized(() => syncHabitAlarmsImpl(habits, new Set(forceRescheduleHabitIds)))
 }
 
 /** Rebuild native schedules after returning from Android's exact-alarm settings. */
-export async function refreshHabitAlarmsAfterPermissionChange(habits: Habit[]): Promise<void> {
+export async function refreshAlarmsAfterPermissionChange(habits: Habit[], events: StudyEvent[]): Promise<void> {
   if (!isNative()) return
   return serialized(async () => {
     try {
       const { granted } = await Alarm.checkExactAlarmPermission()
+      exactAlarmRequestPending = false
+      if (lastKnownExactPermission === granted) return
+      lastKnownExactPermission = granted
       if (!granted) return
       lastHabitIds.clear()
+      lastPlannerIds.clear()
       await syncHabitAlarmsImpl(habits)
+      await syncPlannerAlarmsImpl(events)
     } catch (e) {
       console.warn('[Alarm] Could not refresh habit reminders after permission change', e)
     }
   })
 }
 
-async function syncHabitAlarmsImpl(habits: Habit[]): Promise<void> {
+async function syncHabitAlarmsImpl(habits: Habit[], forceRescheduleHabitIds = new Set<string>()): Promise<void> {
   await runOneTimeMigration()
 
   const now = new Date()
@@ -216,8 +225,17 @@ async function syncHabitAlarmsImpl(habits: Habit[]): Promise<void> {
   // roll over hours before or after local midnight and suppress the wrong alarm.
   const today = getTodayStr()
 
-  if (isNative()) {
+  const hasHabitReminder = habits.some((habit) =>
+    !habit.archived &&
+    (habit.alarmEnabled || habit.reminder?.enabled) &&
+    (Array.isArray(habit.reminder?.times) ? habit.reminder.times : []).some((time) =>
+      typeof time === 'string' && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(time)
+    )
+  )
+
+  if (isNative() && hasHabitReminder) {
     const { granted } = await Alarm.checkExactAlarmPermission()
+    lastKnownExactPermission = granted
     if (!granted) {
       console.warn('[Alarm] Exact alarm permission not granted — requesting from user')
       try {
@@ -225,8 +243,8 @@ async function syncHabitAlarmsImpl(habits: Habit[]): Promise<void> {
       } catch (e) {
         console.warn('[Alarm] requestExactAlarmPermission failed', e)
       }
-      // Re-check after the request dialog. If still not granted, bail — the OS
-      // will open the system settings screen; alarms will sync on next app launch.
+      // The OS settings screen returns before the user makes a choice. If access
+      // is still off, wait for the app foreground handler to retry after return.
       const { granted: grantedAfter } = await Alarm.checkExactAlarmPermission()
       if (!grantedAfter) {
         console.warn('[Alarm] Exact alarm permission still not granted — skipping habit alarm sync')
@@ -241,11 +259,8 @@ async function syncHabitAlarmsImpl(habits: Habit[]): Promise<void> {
     if (habit.archived) { activeIds.set(habit.id, []); continue }
     if (!habit.alarmEnabled && !habit.reminder?.enabled) { activeIds.set(habit.id, []); continue }
 
-    const times = habit.reminder?.times || []
+    const times = Array.isArray(habit.reminder?.times) ? habit.reminder.times : []
     if (times.length === 0) { activeIds.set(habit.id, []); continue }
-
-    const completedToday = habit.completedDates.includes(today) && !(habit.reminder?.repeat)
-    if (completedToday) { activeIds.set(habit.id, []); continue }
 
     const entityIds = [...new Set(times.filter((timeStr) =>
       typeof timeStr === 'string' && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(timeStr)
@@ -256,8 +271,9 @@ async function syncHabitAlarmsImpl(habits: Habit[]): Promise<void> {
   for (const [habitId, newIds] of activeIds) {
     const oldIds = lastHabitIds.get(habitId) || []
 
-    const toCancel = oldIds.filter(id => !newIds.includes(id))
-    const toSchedule = newIds.filter(id => !oldIds.includes(id))
+    const forceReschedule = forceRescheduleHabitIds.has(habitId)
+    const toCancel = oldIds.filter(id => forceReschedule || !newIds.includes(id))
+    const toSchedule = newIds.filter(id => forceReschedule || !oldIds.includes(id))
 
     for (const id of toCancel) {
       await cancelAlarm(id)
@@ -270,21 +286,25 @@ async function syncHabitAlarmsImpl(habits: Habit[]): Promise<void> {
       const timeStr = alarmId.slice(habitId.length + 1)
       const [h, m] = timeStr.split(':').map(Number)
       if (isNaN(h) || isNaN(m)) continue
+      const completedToday = resolveCompletedDates(habit).includes(today) && !(habit.reminder?.repeat)
 
       const scheduleAt = new Date(now)
       scheduleAt.setHours(h, m, 0, 0)
       // Choose the next date on which this habit is due. Native recurrence uses
       // the same rule after firing, so weekly/custom habits don't become daily.
-      for (let daysAhead = 0; daysAhead < 370; daysAhead++) {
+      let foundDueDate = false
+      for (let daysAhead = completedToday ? 1 : 0; daysAhead < 370; daysAhead++) {
         const candidate = new Date(now)
         candidate.setDate(candidate.getDate() + daysAhead)
         candidate.setHours(h, m, 0, 0)
         const dateKey = `${candidate.getFullYear()}-${String(candidate.getMonth() + 1).padStart(2, '0')}-${String(candidate.getDate()).padStart(2, '0')}`
         if (candidate > now && isHabitDueOnDate(habit, dateKey)) {
           scheduleAt.setTime(candidate.getTime())
+          foundDueDate = true
           break
         }
       }
+      if (!foundDueDate) continue
 
       await scheduleAlarm({
         type: 'habit',
@@ -324,8 +344,16 @@ export async function syncPlannerAlarms(events: StudyEvent[]): Promise<void> {
 }
 
 async function syncPlannerAlarmsImpl(events: StudyEvent[]): Promise<void> {
-  if (isNative()) {
+  const now = new Date()
+  const hasFuturePlannerReminder = events.some((event) => {
+    if (!event.reminder?.enabled || event.completed) return false
+    const remindAt = new Date(new Date(event.startTime).getTime() - event.reminder.minutesBefore * 60000)
+    return remindAt > now
+  })
+
+  if (isNative() && hasFuturePlannerReminder) {
     const { granted } = await Alarm.checkExactAlarmPermission()
+    lastKnownExactPermission = granted
     if (!granted) {
       console.warn('[Alarm] Exact alarm permission not granted — requesting from user (planner)')
       try {

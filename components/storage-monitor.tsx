@@ -11,6 +11,7 @@ export function StorageMonitor() {
    const [stats, setStats] = useState<StorageStats | null>(null)
    const [showWarning, setShowWarning] = useState(false)
    const [showCritical, setShowCritical] = useState(false)
+   const [quotaError, setQuotaError] = useState<string | null>(null)
    const [isCleaningUp, setIsCleaningUp] = useState(false)
    const cleanupTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
    const showWarningRef = useRef(showWarning)
@@ -39,6 +40,7 @@ export function StorageMonitor() {
 
      const handleQuotaExceeded = (e: Event) => {
        const customEvent = e as CustomEvent<{ error: string; compacted?: boolean }>
+       setQuotaError(customEvent.detail.error)
        setShowCritical(true)
        if (customEvent.detail.compacted) {
          cleanupTimeoutRef.current = setTimeout(() => {
@@ -149,10 +151,10 @@ export function StorageMonitor() {
               </div>
               <div className="flex-1 min-w-0">
                 <h3 className="text-sm font-semibold text-foreground mb-1">
-                  {showCritical ? 'Storage Critical' : 'Storage Warning'}
+                  {quotaError ? `Could not save your latest change: ${quotaError}. The change may be lost if you close or reload the app. Export your data and clear storage before continuing.` : showCritical ? 'Storage Critical' : 'Storage Warning'}
                 </h3>
                 <p className="text-xs text-muted-foreground mb-3">
-                  {showCritical
+                  {quotaError ? `Could not save your latest change: ${quotaError}. The change may be lost if you close or reload the app. Export your data and clear storage before continuing.` : showCritical
                     ? `Your storage is ${Math.round(stats.percentage * 100)}% full (${formatBytes(stats.used)} / ${formatBytes(stats.estimated)}). Please export your data and clean up old items.`
                     : `Your storage is ${Math.round(stats.percentage * 100)}% full. Consider cleaning up old data to prevent issues.`}
                 </p>

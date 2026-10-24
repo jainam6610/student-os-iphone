@@ -20,6 +20,8 @@ import { MotivationManager } from '@/components/motivation/MotivationManager'
 import { focusService } from '@/Focus/service/FocusService'
 import { syncShieldSettingsToNative } from '@/lib/deep-lock/shield-sync'
 import { vibrate } from '@/lib/notifications'
+import { App } from '@capacitor/app'
+import { refreshAlarmsAfterPermissionChange } from '@/lib/scheduling'
 
 const Dashboard = lazy(() => import('@/components/dashboard').then(m => ({ default: m.Dashboard })))
 const FocusView = lazy(() => import('@/Focus/components/FocusView').then(m => ({ default: m.FocusView })))
@@ -172,6 +174,32 @@ export default function StudentOS() {
     }
     document.addEventListener('visibilitychange', handleVisibility)
     return () => document.removeEventListener('visibilitychange', handleVisibility)
+  }, [])
+
+  // Android opens system settings when exact-alarm access is requested. On
+  // return, rebuild reminders now that the user may have granted the permission.
+  useEffect(() => {
+    const refresh = () => {
+      const state = useStore.getState()
+      return refreshAlarmsAfterPermissionChange(state.habits, state.events)
+    }
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') void refresh()
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    let disposed = false
+    let listener: { remove: () => Promise<void> } | undefined
+    void App.addListener('appStateChange', ({ isActive }) => {
+      if (isActive) void refresh()
+    }).then((handle) => {
+      if (disposed) void handle.remove()
+      else listener = handle
+    }).catch(() => {})
+    return () => {
+      disposed = true
+      document.removeEventListener('visibilitychange', onVisibility)
+      void listener?.remove()
+    }
   }, [])
 
   // Global handler for native navigation requests (e.g., WarningActivity → Focus)

@@ -39,10 +39,9 @@ export function normalizePlannerSettings(
 ): PlannerSettings {
   const wakeTime = settings?.wakeTime ?? DEFAULT_WAKE_TIME
   const bedTime = settings?.bedTime ?? DEFAULT_BED_TIME
-  const sleepDurationMinutes =
-    typeof settings?.sleepDurationMinutes === 'number' && settings.sleepDurationMinutes > 0
-      ? settings.sleepDurationMinutes
-      : getSleepDurationMinutes(bedTime, wakeTime)
+  // This is derived data. Older persisted values can be stale after either
+  // clock time changes, so always calculate it from the current inputs.
+  const sleepDurationMinutes = getSleepDurationMinutes(bedTime, wakeTime)
 
   return {
     wakeTime,

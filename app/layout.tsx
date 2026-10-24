@@ -1,16 +1,20 @@
 import type { Metadata, Viewport } from 'next'
-import { Geist, Geist_Mono } from 'next/font/google'
+import localFont from 'next/font/local'
 import Script from 'next/script'
 import './globals.css'
 
-const geist = Geist({
-  subsets: ["latin"],
+const geist = localFont({
+  src: './fonts/geist.woff2',
+  weight: '100 900',
   variable: '--font-geist',
+  display: 'swap',
 })
 
-const geistMono = Geist_Mono({
-  subsets: ["latin"],
+const geistMono = localFont({
+  src: './fonts/geist-mono.woff2',
+  weight: '100 900',
   variable: '--font-geist-mono',
+  display: 'swap',
 })
 
 export const metadata: Metadata = {
@@ -95,7 +99,7 @@ export default function RootLayout({
         <Script id="register-sw" strategy="afterInteractive">
 {`if ('serviceWorker' in navigator) {
   window.addEventListener('load', function() {
-    navigator.serviceWorker.register('/sw.js?v=8').then(function(reg) {
+    navigator.serviceWorker.register('/sw.js?v=9').then(function(reg) {
       // Auto-update: activate new SW immediately — controllerchange handles reload
       reg.addEventListener('updatefound', function() {
         var newWorker = reg.installing;

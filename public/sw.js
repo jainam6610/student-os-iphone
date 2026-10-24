@@ -8,7 +8,7 @@
 // ─── Version ───
 // INCREMENT ON EVERY DEPLOY to force cache invalidation.
 // Must match or exceed the value in the deploy script.
-const SW_VERSION = 8
+const SW_VERSION = 9
 const CACHE_PREFIX = `os-v${SW_VERSION}-`
 
 const CACHES = {
@@ -59,10 +59,10 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(
     (async () => {
       const existing = await caches.keys()
-      const ourPrefix = CACHE_PREFIX
       await Promise.allSettled(
         existing
-          .filter((key) => !key.startsWith(ourPrefix))
+          // Only remove caches owned by this app. Other apps may share origin.
+          .filter((key) => key.startsWith('os-v') && !key.startsWith(CACHE_PREFIX))
           .map((key) => caches.delete(key))
       )
     })()
@@ -76,7 +76,7 @@ self.addEventListener('message', (event) => {
     event.waitUntil(
       (async () => {
         const keys = await caches.keys()
-        await Promise.all(keys.map((key) => caches.delete(key)))
+        await Promise.all(keys.filter((key) => key.startsWith('os-v')).map((key) => caches.delete(key)))
       })()
     )
   }
@@ -171,13 +171,14 @@ self.addEventListener('fetch', (event) => {
 // ─── Cache Strategies ───
 
 async function cacheFirst(request, cacheName) {
-  const cached = await caches.match(request)
+  // A global match can resurrect a response from an older version cache.
+  const cache = await caches.open(cacheName)
+  const cached = await cache.match(request)
   if (cached) return cached
 
   try {
     const response = await fetch(request)
     if (response.ok && response.type === 'basic') {
-      const cache = await caches.open(cacheName)
       const cloned = response.clone()
       await cache.put(request, cloned)
     }
@@ -189,16 +190,16 @@ async function cacheFirst(request, cacheName) {
 }
 
 async function networkFirst(request, cacheName) {
+  const cache = await caches.open(cacheName)
   try {
     const response = await fetch(request)
     if (response.ok && response.type === 'basic') {
-      const cache = await caches.open(cacheName)
       const cloned = response.clone()
       await cache.put(request, cloned)
     }
     return response
   } catch {
-    const cached = await caches.match(request)
+    const cached = await cache.match(request)
     if (cached) return cached
     if (request.destination === 'document') return offlineFallback()
     return new Response('Offline', { status: 503 })

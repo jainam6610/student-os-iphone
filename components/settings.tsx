@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { Capacitor } from '@capacitor/core'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useStore } from '@/lib/store'
 import { staggerContainer, staggerItem, spring } from './motion'
@@ -12,7 +13,7 @@ import {
   Instagram, User, ChevronRight, RotateCcw, Brain, BookOpen, Star, Eye, Zap, BellRing, X, Music, Coffee,
   Disc3, Volume2, Repeat, Type, Palette, Layout, Shield, Settings2, ChevronDown, Bell,
   Calendar, AlarmClock, Activity, Palette as PaletteIcon, FileText, Info, Terminal,
-  Plus, Check, Music2, ListChecks, AlertTriangle, GraduationCap,
+  Plus, Check, Music2, ListChecks, AlertTriangle, GraduationCap, RefreshCw,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { ProfileAvatar } from './profile-avatar'
@@ -25,7 +26,7 @@ import {
  } from '@/lib/notifications'
  import type { NotificationPermissionState } from '@/lib/notifications'
  import Alarm from '@/lib/plugins/alarm-plugin'
- import { scheduleAlarm } from '@/lib/scheduling'
+ import { cancelAllAlarms, scheduleAlarm } from '@/lib/scheduling'
  import { useToast } from './ui/toast'
  import { PrivacyPolicy } from './compliance/PrivacyPolicy'
  import { TermsOfService } from './compliance/TermsOfService'
@@ -33,6 +34,8 @@ import {
  import { Licenses } from './compliance/Licenses'
  import { AboutInfo } from './compliance/AboutInfo'
  import { importAudioFiles, deleteTrack, renameTrack, getTracksMeta, MAX_TRACKS, type AmbientTrack } from '@/lib/ambient-db'
+ import { clearAmbientTracks } from '@/lib/ambient-db'
+ import { deepLockPlugin } from '@/lib/deep-lock/plugin'
  import { useAmbientAudio } from '@/lib/useAmbientAudio'
 
 const GOAL_PRESETS = [
@@ -243,11 +246,48 @@ export function Settings() {
     e.target.value = ''
   }
 
-  const handleClearData = () => {
-    localStorage.removeItem('student-os-storage-v3')
-      ;['student-os-storage', 'student-os-storage-v2'].forEach((k) => {
-        try { localStorage.removeItem(k) } catch { }
+  const handleClearData = async () => {
+    try {
+      await cancelAllAlarms()
+      if (Capacitor.isNativePlatform()) {
+        const alarms = await Alarm.cancelAllAlarms()
+        if (!alarms.success) throw new Error('Could not cancel scheduled alarms')
+        const native = await deepLockPlugin.clearAllData()
+        if (!native.success) throw new Error(native.error || 'Could not clear Android data')
+      }
+      await clearAmbientTracks()
+      for (const key of ['student-os-storage-v3', 'student-os-storage', 'student-os-storage-v2']) {
+        localStorage.removeItem(key)
+      }
+      setShowClearConfirm(false)
+      window.location.reload()
+    } catch (error) {
+      console.error('[Settings] Clear all data failed:', error)
+      showToast({
+        type: 'error',
+        title: 'Data was not fully cleared',
+        description: error instanceof Error ? error.message : 'Try again after restarting the app.',
       })
+    }
+  }
+  const handleClearAppCache = async () => {
+    try {
+      if ('caches' in window) {
+        const keys = await caches.keys()
+        await Promise.all(keys.filter((key) => key.startsWith('os-v')).map((key) => caches.delete(key)))
+      }
+      if ('serviceWorker' in navigator) {
+        const registrations = await navigator.serviceWorker.getRegistrations()
+        await Promise.all(registrations
+          .filter((registration) => {
+            const scriptUrl = registration.active?.scriptURL
+            return !!scriptUrl && new URL(scriptUrl).pathname.endsWith('/sw.js')
+          })
+          .map((registration) => registration.unregister()))
+      }
+    } catch (error) {
+      console.warn('[Settings] Could not fully clear offline cache', error)
+    }
     window.location.reload()
   }
 
@@ -591,6 +631,7 @@ export function Settings() {
           <SettingRow icon={<Download className="w-4 h-4" />} title="Export data" description="Download JSON backup" onClick={handleExport} />
           <SettingRow icon={<Upload className="w-4 h-4" />} title="Import data" description="Restore from a backup file" onClick={() => setShowImportModal(true)} />
           <SettingRow icon={<RotateCcw className="w-4 h-4" />} title="Replay tutorial" description="Re-experience the guided onboarding" onClick={() => setShowResetConfirm(true)} />
+          <SettingRow icon={<RefreshCw className="w-4 h-4" />} title="Clear app cache" description="Refresh offline files; keep your data" onClick={() => void handleClearAppCache()} />
           <SettingRow icon={<Trash2 className="w-4 h-4" />} title="Clear all data" description="Permanently delete local data" onClick={() => setShowClearConfirm(true)} isLast />
         </Card>
       </SettingsSection>

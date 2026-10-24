@@ -424,8 +424,7 @@ export const deepLockPlugin: DeepLockPluginInterface = {
     const plugin = await getNativePlugin()
     if (!plugin) return { success: false, error: 'Not on native platform' }
     try {
-      await plugin.clearAllData()
-      return { success: true }
+      return await plugin.clearAllData()
     } catch (e: any) {
       return { success: false, error: e?.message ?? 'Failed to clear native data' }
     }

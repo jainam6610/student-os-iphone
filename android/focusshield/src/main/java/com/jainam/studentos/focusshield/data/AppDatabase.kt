@@ -1,6 +1,12 @@
 package com.jainam.studentos.focusshield.data
 
 import android.content.Context
+import androidx.datastore.preferences.core.edit
+import com.jainam.studentos.focusshield.data.datastore.dataStore
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
@@ -50,6 +56,20 @@ abstract class AppDatabase : RoomDatabase() {
          */
         val MIGRATION_2_3 = Migration(2, 3) { db ->
             db.execSQL("UPDATE app_categories SET categoryType = 'UNCATEGORIZED' WHERE categoryType = 'BLOCKED'")
+        }
+
+        @JvmStatic
+        fun clearAllPersistedData(context: Context, onComplete: (String?) -> Unit) {
+            val appContext = context.applicationContext
+            CoroutineScope(Dispatchers.IO + SupervisorJob()).launch {
+                try {
+                    getDatabase(appContext).clearAllTables()
+                    appContext.dataStore.edit { preferences -> preferences.clear() }
+                    onComplete(null)
+                } catch (error: Exception) {
+                    onComplete(error.message ?: "Failed to clear native database")
+                }
+            }
         }
 
         @JvmStatic

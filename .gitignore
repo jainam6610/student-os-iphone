@@ -25,6 +25,10 @@ __v0_jsx-dev-runtime.ts
 *.keystore
 key.properties
 
+# Gradle / Kotlin local caches
+android/.kotlin/
+android/.gradle/
+
 # Logs and crash dumps
 *.log
 hs_err_pid*.log

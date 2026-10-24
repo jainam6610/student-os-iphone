@@ -19,6 +19,7 @@ import type { AppBlockMode } from '@/lib/store/slices/shield-slice'
 import type { InstalledApp } from '@/lib/deep-lock/plugin'
 import { loadInstalledApps } from '@/lib/deep-lock/installed-apps'
 import { applyAppMode } from '@/lib/deep-lock/app-mode'
+import { waitForShieldStoreHydration } from '@/lib/deep-lock/shield-sync'
 import { FAILSAFE_PACKAGES } from '@/lib/deep-lock/default-whitelist'
 import { cn } from '@/lib/utils'
 
@@ -145,9 +146,10 @@ export function AppPickerSheet({ open, onClose }: Props) {
     [alwaysBlockedApps, sessionBlockedApps],
   )
 
-  const setMode = useCallback((pkg: string, mode: AppBlockMode) => {
+  const setMode = useCallback(async (pkg: string, mode: AppBlockMode) => {
     setHint(null)
-    void applyAppMode(pkg, mode)
+    await waitForShieldStoreHydration()
+    await applyAppMode(pkg, mode)
   }, [])
 
   const handleCustomAdd = useCallback(
@@ -157,7 +159,7 @@ export function AppPickerSheet({ open, onClose }: Props) {
         setHint('Enter a package id, e.g. com.example.game')
         return
       }
-      setMode(pkg, mode)
+      void setMode(pkg, mode)
       setCustomPackage('')
       setHint(`${pkg} → ${mode === 'focus' ? 'During focus' : '24/7'}`)
     },

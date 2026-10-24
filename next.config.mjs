@@ -1,6 +1,16 @@
+import { readFileSync } from 'node:fs'
+
+// Single source of truth for the version shown in Settings / About.
+// Bump `version` in package.json + `versionName`/`versionCode` in
+// android/app/build.gradle together when releasing.
+const { version } = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8'))
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: 'export',
+  env: {
+    NEXT_PUBLIC_APP_VERSION: version,
+  },
   images: {
     unoptimized: true,
   },

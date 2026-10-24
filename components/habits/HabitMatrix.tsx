@@ -5,7 +5,7 @@ import { motion } from 'framer-motion'
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, subMonths, addMonths } from 'date-fns'
 import { type Habit } from '@/lib/habits/types'
 import { HabitIcon } from './HabitIcon'
-import { isHabitDueOnDate } from '@/lib/habits/utils'
+import { isHabitDueOnDate, resolveCompletedDates, resolveSkippedDates } from '@/lib/habits/utils'
 import { cn } from '@/lib/utils'
 import { staggerItem } from '@/components/motion'
 import { ChevronLeft, ChevronRight, Brain } from 'lucide-react'
@@ -110,7 +110,10 @@ export const HabitMatrix = memo(function HabitMatrix({
               <p className="text-xs text-on-surface-variant/60 mt-2">No active habits</p>
             </div>
           ) : (
-            activeHabits.map((habit) => (
+            activeHabits.map((habit) => {
+              const completedDates = new Set(resolveCompletedDates(habit))
+              const skippedDates = new Set(resolveSkippedDates(habit))
+              return (
               <div key={habit.id} className="flex items-center group">
                 <div className="w-28 flex-shrink-0 flex items-center gap-2 overflow-hidden">
                     <HabitIcon name={habit.icon} size={14} className="shrink-0" />
@@ -119,8 +122,8 @@ export const HabitMatrix = memo(function HabitMatrix({
                 <div className="flex">
                   {daysInMonth.map((d, i) => {
                     const dateStr = format(d, 'yyyy-MM-dd')
-                    const isCompleted = habit.completedDates.includes(dateStr)
-                    const isSkipped = habit.skippedDates?.includes(dateStr)
+                    const isCompleted = completedDates.has(dateStr)
+                    const isSkipped = skippedDates.has(dateStr)
                     const isFuture = d > now
                     const isDue = isHabitDueOnDate(habit, dateStr)
                     const isToday = dateStr === todayStr
@@ -169,7 +172,8 @@ export const HabitMatrix = memo(function HabitMatrix({
                   })}
                 </div>
               </div>
-            ))
+              )
+            })
           )}
         </div>
       </div>

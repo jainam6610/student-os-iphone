@@ -17,6 +17,8 @@ import { subMonths, addMonths } from 'date-fns'
 import { Activity, Plus, PlusCircle, ChevronRight, CalendarDays, BarChart3, AlertTriangle, Brain, Calendar, List } from 'lucide-react'
 import Alarm, { type AlarmEventData } from '@/lib/plugins/alarm-plugin'
 
+const ALARM_CLEARED_EVENT = 'student-os:alarm-cleared'
+
 export function HabitView() {
   const habits = useStore((s) => s.habits)
   const addHabit = useStore((s) => s.addHabit)
@@ -100,16 +102,22 @@ export function HabitView() {
 
   useEffect(() => {
     let removeListener: (() => void) | undefined
+    const handleAlarmCleared = () => setRingingAlarmHabitId(null)
+    window.addEventListener(ALARM_CLEARED_EVENT, handleAlarmCleared)
     Alarm.addListener('alarmFired', (data: AlarmEventData) => {
       if (data.habitId) setRingingAlarmHabitId(data.habitId)
     }).then((handle: any) => {
       removeListener = handle.remove ?? handle.removeListener
     }).catch(() => {})
-    return () => { removeListener?.() }
+    return () => {
+      window.removeEventListener(ALARM_CLEARED_EVENT, handleAlarmCleared)
+      removeListener?.()
+    }
   }, [])
 
   const handleDismissAlarm = useCallback(() => {
     setRingingAlarmHabitId(null)
+    window.dispatchEvent(new Event(ALARM_CLEARED_EVENT))
     Alarm.dismissAlarm().catch(() => {})
   }, [])
 

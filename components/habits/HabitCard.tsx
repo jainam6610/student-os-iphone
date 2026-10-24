@@ -4,11 +4,11 @@ import { memo, useCallback } from 'react'
 import { motion } from 'framer-motion'
 import { type Habit } from '@/lib/habits/types'
 import { HabitIcon } from './HabitIcon'
-import { getTodayStr, formatHabitCueTime } from '@/lib/habits/utils'
+import { getTodayStr, formatHabitCueTime, resolveCompletedDates, resolveSkippedDates } from '@/lib/habits/utils'
 import { HABIT_TIME_OF_DAY_LABELS } from '@/lib/habits/types'
 import { cn } from '@/lib/utils'
 import { staggerItem } from '@/components/motion'
-import { Pencil, Archive, Trash2 } from 'lucide-react'
+import { Pencil, Archive, Trash2, AlarmClock } from 'lucide-react'
 
 interface HabitCardProps {
   habit: Habit
@@ -32,19 +32,16 @@ export const HabitCard = memo(function HabitCard({
   index,
 }: HabitCardProps) {
   const today = getTodayStr()
-  const isCompleted = habit.completedDates.includes(today)
-  const isSkipped = habit.skippedDates?.includes(today)
+  const isCompleted = resolveCompletedDates(habit).includes(today)
+  const isSkipped = resolveSkippedDates(habit).includes(today)
   const isRinging = ringingAlarmHabitId === habit.id
+  const reminderTime = habit.reminder?.enabled ? formatHabitCueTime(habit.reminder.times?.[0]) : null
 
   // Atomic Habits cue line: when + how long, so the card states the intention
   // instead of only the name. Falls back to nothing when a habit has no cue.
   const cueParts: string[] = []
   const timeOfDay = habit.timeOfDay ?? 'anytime'
   if (timeOfDay !== 'anytime') cueParts.push(HABIT_TIME_OF_DAY_LABELS[timeOfDay])
-  if (habit.reminder?.enabled) {
-    const clock = formatHabitCueTime(habit.reminder.times?.[0])
-    if (clock) cueParts.push(clock)
-  }
   if (habit.estimatedDuration) cueParts.push(`${habit.estimatedDuration} min`)
   const cue = cueParts.join(' · ')
 
@@ -110,8 +107,14 @@ export const HabitCard = memo(function HabitCard({
           <p className="text-xs text-on-surface-variant truncate">
             {(habit.currentStreak ?? habit.streak ?? 0) > 0 ? `${habit.currentStreak ?? habit.streak ?? 0} day streak` : habit.category ? `${habit.category}` : 'No streak'}
           </p>
+          {reminderTime && (
+            <p className="mt-1 inline-flex items-center gap-1 rounded-md bg-primary/10 px-1.5 py-0.5 text-[11px] font-semibold leading-tight text-primary">
+              <AlarmClock className="h-3 w-3" aria-hidden="true" />
+              <span>{reminderTime} reminder</span>
+            </p>
+          )}
           {cue && (
-            <p className="text-[10px] leading-tight text-on-surface-variant/60 truncate mt-0.5">
+            <p className="text-[10px] leading-tight text-on-surface-variant/70 truncate mt-0.5">
               {cue}
             </p>
           )}

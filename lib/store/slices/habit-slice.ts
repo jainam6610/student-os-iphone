@@ -99,7 +99,9 @@ export const createHabitSlice = (set: any, get: any, _api?: any): HabitSlice => 
       }
     }
     set((state: any) => ({ habits: state.habits.map((h: Habit) => h.id === id ? { ...h, ...updates, updatedAt: new Date() } : h) }))
-    await syncHabitAlarms(get().habits)
+    // IDs can remain unchanged when repeat days, sound, or labels change.
+    // Force replacement so native persisted alarm metadata uses new settings.
+    await syncHabitAlarms(get().habits, [id])
   },
   deleteHabit: async (id) => {
     const habit = get().habits.find((h: Habit) => h.id === id)
@@ -146,10 +148,10 @@ export const createHabitSlice = (set: any, get: any, _api?: any): HabitSlice => 
       try { get().checkAchievements() } catch {}
       try { get().recalculateProductivityScore() } catch {}
     }
-    await syncHabitAlarms(get().habits)
+    await syncHabitAlarms(get().habits, [id])
     await dismissAlarm()
   },
-  undoCompleteHabit: (id, date) => {
+  undoCompleteHabit: async (id, date) => {
     const targetDate = date || getTodayStr()
     const current = get().habits.find((h: Habit) => h.id === id)
     const wasDone = current ? normalizeCompletedDates(current.completedDates).includes(targetDate) : false
@@ -181,6 +183,7 @@ export const createHabitSlice = (set: any, get: any, _api?: any): HabitSlice => 
       try { get().checkAchievements() } catch {}
       try { get().recalculateProductivityScore() } catch {}
     }
+    await syncHabitAlarms(get().habits, [id])
   },
   skipHabit: (id, reason, date) => set((state: any) => ({
     habits: state.habits.map((h: Habit) => {
@@ -208,7 +211,7 @@ export const createHabitSlice = (set: any, get: any, _api?: any): HabitSlice => 
     set((state: any) => ({
       habits: state.habits.map((h: Habit) => h.id === id ? { ...h, archived: true, archivedAt: new Date(), updatedAt: new Date() } : h),
     }))
-    await syncHabitAlarms(get().habits)
+    await syncHabitAlarms(get().habits, [id])
   },
   restoreHabit: async (id) => {
     set((state: any) => ({
@@ -296,7 +299,7 @@ export const createHabitSlice = (set: any, get: any, _api?: any): HabitSlice => 
     get().addXP(wasCompleted ? -HABIT_CHECKIN_XP : HABIT_CHECKIN_XP)
     try { get().checkAchievements() } catch {}
     try { get().recalculateProductivityScore() } catch {}
-    await syncHabitAlarms(get().habits)
+    await syncHabitAlarms(get().habits, [id])
     await dismissAlarm()
   },
   habitSettings: DEFAULT_HABIT_SETTINGS,

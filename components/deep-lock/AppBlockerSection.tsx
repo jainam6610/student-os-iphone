@@ -805,7 +805,7 @@ export function AppBlockerSection() {
                     )}
                     aria-label={activeList === 'session' ? `Move ${pkg} to 24/7` : `Move ${pkg} to during focus`}
                   >
-                    {activeList === 'session' ? '24/7' : 'Focus'}
+                    {activeList === 'session' ? 'Move to 24/7' : 'Move to focus'}
                   </button>
                   <button
                     type="button"

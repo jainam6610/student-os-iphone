@@ -115,6 +115,10 @@ export async function importAudioFiles(files: FileList | File[]): Promise<Import
 /**
  * Delete a track from IndexedDB by id.
  */
+export async function clearAmbientTracks(): Promise<void> {
+  await ambientDb.tracks.clear()
+}
+
 export async function deleteTrack(id: number): Promise<void> {
   await ambientDb.tracks.delete(id)
 }
