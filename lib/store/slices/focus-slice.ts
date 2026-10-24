@@ -14,6 +14,10 @@ export interface FocusSlice {
    * session (page.tsx creates the record; the service supplies the break time).
    */
   setLatestSessionBreakMinutes: (minutes: number) => void
+  /** C2: attach the epoch-ms window of the break that produced those minutes. */
+  setLatestSessionBreakWindow: (startedAt: number, endedAt: number) => void
+  /** C2: attach the epoch-ms window of the last pause on that session. */
+  setLatestSessionPauseWindow: (startedAt: number, endedAt: number) => void
   recomputeProgress: () => void
 }
 
@@ -48,6 +52,34 @@ export const createFocusSlice = (set: any, get: any, _api?: any): FocusSlice => 
       focusSessions: [
         ...list.slice(0, -1),
         { ...last, breakMinutes: safeMinutes },
+      ],
+    }
+  }),
+  setLatestSessionBreakWindow: (startedAt, endedAt) => set((state: any) => {
+    const list: FocusSession[] = state.focusSessions
+    if (!list.length) return state
+    const last = list[list.length - 1]
+    const start = Number.isFinite(startedAt) ? Math.round(startedAt) : 0
+    const end = Number.isFinite(endedAt) ? Math.round(endedAt) : 0
+    if (start <= 0 || end <= 0) return state
+    return {
+      focusSessions: [
+        ...list.slice(0, -1),
+        { ...last, breakStartedAt: start, breakEndedAt: end },
+      ],
+    }
+  }),
+  setLatestSessionPauseWindow: (startedAt, endedAt) => set((state: any) => {
+    const list: FocusSession[] = state.focusSessions
+    if (!list.length) return state
+    const last = list[list.length - 1]
+    const start = Number.isFinite(startedAt) ? Math.round(startedAt) : 0
+    const end = Number.isFinite(endedAt) ? Math.round(endedAt) : 0
+    if (start <= 0 || end <= 0) return state
+    return {
+      focusSessions: [
+        ...list.slice(0, -1),
+        { ...last, pauseStartedAt: start, pauseEndedAt: end },
       ],
     }
   }),

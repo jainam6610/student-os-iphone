@@ -15,6 +15,12 @@ export interface FocusSession {
   pauseCount: number
   /** Break time (minutes) measured from timestamps, not a tick counter. */
   breakMinutes: number
+  /** Epoch-ms window of the break this session recorded (C2). 0 when none. */
+  breakStartedAt?: number
+  breakEndedAt?: number
+  /** Epoch-ms window of the last pause (C2). 0 when none. */
+  pauseStartedAt?: number
+  pauseEndedAt?: number
   completed: boolean
   interrupted: boolean
 }

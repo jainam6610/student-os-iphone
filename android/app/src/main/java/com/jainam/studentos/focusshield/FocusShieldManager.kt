@@ -6,6 +6,7 @@ import android.content.Intent
 import android.os.Build
 import android.util.Log
 import com.jainam.studentos.WarningActivity
+import com.jainam.studentos.alarm.ThoughtNotifier
 import com.jainam.studentos.focusshield.core.notification.NotificationHelper
 import com.jainam.studentos.focusshield.data.AppCategory
 import com.jainam.studentos.focusshield.data.AppDatabase
@@ -117,8 +118,6 @@ class FocusShieldManager(context: Context) {
     private var checkInStartAt: Long = 0L
     @Volatile
     private var checkInFired: Boolean = false
-    /** Guards against launching a second overlay while one is already up. */
-    private val checkInOverlayActive = java.util.concurrent.atomic.AtomicBoolean(false)
 
     // ── YouTube Study Mode ───────────────────────────────────────────────────
     private val studyModeOverlayActive = java.util.concurrent.atomic.AtomicBoolean(false)
@@ -283,7 +282,7 @@ class FocusShieldManager(context: Context) {
                 try {
                     if (isDetectorActive.get() || isBreakBlockerActive.get()) continue
                     if (!blockingEngine.isCheckInEnabled) continue
-                    if (checkInOverlayActive.get()) continue
+                    if (checkInFired) continue
                     val pkg = getCurrentForegroundApp() ?: lastEventPkg ?: continue
                     if (pkg == selfPackageName) continue
                     handleCheckIn(pkg, System.currentTimeMillis())
@@ -1481,11 +1480,10 @@ class FocusShieldManager(context: Context) {
         if (checkInFired) return
         if (now - checkInStartAt < CHECK_IN_INTERVAL_MS) return
         if (BlockingEngine.isWarningScreenActive.get()) return
-        if (!checkInOverlayActive.compareAndSet(false, true)) return
 
         checkInFired = true
-        Log.i(TAG, "checkIn: $packageName open ${(now - checkInStartAt) / 1000}s → showing 'Are you on track?'")
-        launchCheckInOverlay(packageName)
+        Log.i(TAG, "checkIn: $packageName open ${(now - checkInStartAt) / 1000}s → posting 'Still on it?' notification")
+        postCheckInNotification(packageName)
     }
 
     private fun resetCheckInTracking() {
@@ -1654,39 +1652,23 @@ class FocusShieldManager(context: Context) {
         return false
     }
 
-    private fun launchCheckInOverlay(packageName: String) {
-        try {
-            val intent = android.content.Intent(appContext, Class.forName("com.jainam.studentos.OnTrackActivity")).apply {
-                flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK or
-                    android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP or
-                    android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP
-                putExtra("packageName", packageName)
-            }
-            appContext.startActivity(intent)
-            Log.i(TAG, "checkIn: OnTrackActivity launched for $packageName")
-        } catch (e: Exception) {
-            Log.e(TAG, "checkIn: could not launch OnTrackActivity", e)
-            checkInOverlayActive.set(false)
-            checkInFired = false
-        }
-    }
-
     /**
-     * Called by [com.jainam.studentos.OnTrackActivity] when the user answers.
-     * "On track" restarts the 10-minute window; "Not on track" lets the activity
-     * eject the user (it goes home itself), and the next visit starts fresh.
+     * C1: motivation is notification-only. This used to launch a full-screen
+     * `OnTrackActivity` that took over whatever the user was doing; it now posts
+     * the same nudge through the silent `ThoughtNotifier` channel and leaves the
+     * foreground app alone.
      */
-    fun onCheckInAnswered(packageName: String, onTrack: Boolean) {
-        checkInOverlayActive.set(false)
-        if (onTrack) {
-            if (checkInPkg == packageName) {
-                checkInStartAt = System.currentTimeMillis()
-                checkInFired = false
-            }
-            Log.i(TAG, "checkIn: user is on track in $packageName — timer restarted")
-        } else {
-            resetCheckInTracking()
-            Log.i(TAG, "checkIn: user is NOT on track in $packageName — ejecting")
+    private fun postCheckInNotification(packageName: String) {
+        try {
+            val appName = try { appDetector.getAppName(packageName) } catch (_: Exception) { packageName }
+            val body = MotivationEngine.getAppTitle(packageName)
+            val entityId = "checkin-$packageName"
+            ThoughtNotifier.show(appContext, entityId, "Still on $appName?", body)
+            Log.i(TAG, "checkIn: notification posted for $packageName")
+        } catch (e: Exception) {
+            Log.w(TAG, "checkIn: could not post notification", e)
+            // Let the next visit try again rather than latching the state.
+            checkInFired = false
         }
     }
 

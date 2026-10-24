@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { useStore } from '../lib/store/index.ts'
-import { getXPDataForRange } from '../lib/analytics-engine.ts'
+import { getFocusDataForRange, getXPDataForRange } from '../lib/analytics-engine.ts'
 
 function resetState() {
   const initial = useStore.getInitialState()
@@ -164,6 +164,41 @@ test('planner completion shows up in the analytics XP chart (R4)', async () => {
   await useStore.getState().markEventComplete(event.id, true)
   const xp = getXPDataForRange('7d', useStore.getState().focusSessions, useStore.getState().tasks, new Date(), useStore.getState().events)
   assert.equal(xp.totalXp, 30, 'completed planner event contributes its 30 XP to the chart')
+})
+
+test('break and pause windows are stored with timestamps and counted (C2)', () => {
+  resetState()
+  const start = Date.now() - 20 * 60 * 1000
+  useStore.setState({
+    focusSessions: [{
+      id: 'c2-session',
+      startTime: new Date(start),
+      endTime: new Date(start + 20 * 60 * 1000),
+      duration: 20,
+      targetDuration: 25,
+      type: 'deep-work',
+      completed: true,
+      interrupted: false,
+      status: 'completed',
+      pauseMinutes: 1,
+      createdAt: new Date(start),
+    }],
+  })
+  const store = useStore.getState()
+  store.setLatestSessionBreakMinutes(5)
+  store.setLatestSessionBreakWindow(start + 600000, start + 900000)
+  store.setLatestSessionPauseWindow(start + 100000, start + 160000)
+
+  const session = useStore.getState().focusSessions[0]
+  assert.equal(session.breakMinutes, 5, 'break minutes stored on the session')
+  assert.equal(session.breakStartedAt, start + 600000, 'break start timestamp stored')
+  assert.equal(session.breakEndedAt, start + 900000, 'break end timestamp stored')
+  assert.equal(session.pauseStartedAt, start + 100000, 'pause start timestamp stored')
+  assert.equal(session.pauseEndedAt, start + 160000, 'pause end timestamp stored')
+
+  const focus = getFocusDataForRange('7d', useStore.getState().focusSessions, new Date())
+  assert.equal(focus.totalBreakMinutes, 6, 'pause (1m) + break (5m) counted in the totals')
+  assert.equal(focus.totalFocusMinutes, 20, 'break time never inflates focus time')
 })
 
 test('habit tick moves streak, analytics and dashboard counters immediately (e)', async () => {

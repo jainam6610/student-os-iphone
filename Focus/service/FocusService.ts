@@ -32,6 +32,15 @@ class FocusService {
   // it survives refresh/sleep without drift.
   private _breakAccumulatedMs = 0
   private _breakSegmentStart = 0
+  /**
+   * C2: the break/pause windows are recorded as epoch-ms timestamps (not only
+   * minutes) so the stored session can say *when* a break happened, and so the
+   * value survives refresh through ACTIVE_SESSION_KEY.
+   */
+  private _breakStartedAt = 0
+  private _breakEndedAt = 0
+  private _pauseStartedAt = 0
+  private _pauseEndedAt = 0
   private _isRunning = false
   private _completed = false
   private _sessionId = ''
@@ -126,6 +135,10 @@ class FocusService {
       pausedDuration: Math.round(this.currentPausedMs() / 1000),
       pauseCount: this._pauseCount,
       breakMinutes: Math.round(this.currentBreakMs() / 60000),
+      breakStartedAt: this._breakStartedAt || undefined,
+      breakEndedAt: this._breakEndedAt || undefined,
+      pauseStartedAt: this._pauseStartedAt || undefined,
+      pauseEndedAt: this._pauseEndedAt || undefined,
       completed: status === 'completed',
       interrupted: status === 'cancelled',
     }
@@ -192,6 +205,10 @@ class FocusService {
             pauseCount: this._pauseCount,
             breakAccumulatedMs: this._breakAccumulatedMs,
             breakSegmentStart: this._breakSegmentStart,
+            breakStartedAt: this._breakStartedAt,
+            breakEndedAt: this._breakEndedAt,
+            pauseStartedAt: this._pauseStartedAt,
+            pauseEndedAt: this._pauseEndedAt,
             isRunning: this._isRunning,
           })
         )
@@ -228,6 +245,10 @@ class FocusService {
         pauseCount?: number
         breakAccumulatedMs?: number
         breakSegmentStart?: number
+        breakStartedAt?: number
+        breakEndedAt?: number
+        pauseStartedAt?: number
+        pauseEndedAt?: number
         isRunning?: boolean
       }
       const plannedMs = typeof s.plannedMs === 'number' ? s.plannedMs : 0
@@ -241,6 +262,10 @@ class FocusService {
       this._pauseCount = typeof s.pauseCount === 'number' ? s.pauseCount : 0
       this._breakAccumulatedMs = typeof s.breakAccumulatedMs === 'number' ? s.breakAccumulatedMs : 0
       this._breakSegmentStart = typeof s.breakSegmentStart === 'number' ? s.breakSegmentStart : 0
+      this._breakStartedAt = typeof s.breakStartedAt === 'number' ? s.breakStartedAt : 0
+      this._breakEndedAt = typeof s.breakEndedAt === 'number' ? s.breakEndedAt : 0
+      this._pauseStartedAt = typeof s.pauseStartedAt === 'number' ? s.pauseStartedAt : 0
+      this._pauseEndedAt = typeof s.pauseEndedAt === 'number' ? s.pauseEndedAt : 0
       this._isRunning = Boolean(s.isRunning)
       this._segmentStart = this._isRunning
         ? (typeof s.segmentStart === 'number' ? s.segmentStart : Date.now())
@@ -285,6 +310,13 @@ class FocusService {
         if (session.kind === 'break' && session.breakMinutes > 0) {
           useStore.getState().setLatestSessionBreakMinutes(session.breakMinutes)
         }
+        // C2: persist *when* the break/pause happened too, not just how long.
+        if (this._breakStartedAt > 0) {
+          useStore.getState().setLatestSessionBreakWindow(this._breakStartedAt, this._breakEndedAt || Date.now())
+        }
+        if (this._pauseStartedAt > 0) {
+          useStore.getState().setLatestSessionPauseWindow(this._pauseStartedAt, this._pauseEndedAt || Date.now())
+        }
       }
     } catch (error) {
       if (process.env.NODE_ENV === 'development') {
@@ -307,6 +339,8 @@ class FocusService {
     // Close the open break segment so the total is frozen into the session.
     this._breakAccumulatedMs = this.currentBreakMs()
     this._breakSegmentStart = 0
+    if (this._breakStartedAt > 0) this._breakEndedAt = Date.now()
+    if (this._pausedSegmentStart > 0 && this._pauseEndedAt === 0) this._pauseEndedAt = Date.now()
     this._session = terminal
     this.publishSnapshot()
     // Report + clear internal state BEFORE dispatching the terminal event.
@@ -500,6 +534,10 @@ class FocusService {
     this._pauseCount = 0
     this._breakAccumulatedMs = 0
     this._breakSegmentStart = kind === 'break' ? Date.now() : 0
+    this._breakStartedAt = kind === 'break' ? Date.now() : 0
+    this._breakEndedAt = 0
+    this._pauseStartedAt = 0
+    this._pauseEndedAt = 0
     this._segmentStart = Date.now()
     this._completed = false
     this.emit('running')
@@ -547,6 +585,7 @@ class FocusService {
     this._segmentStart = 0
     this._isRunning = false
     this._pausedSegmentStart = Date.now()
+    this._pauseStartedAt = this._pauseStartedAt || Date.now()
     this._pauseCount += 1
     this.emit('paused')
     this.persistSession()
@@ -558,6 +597,7 @@ class FocusService {
     if (this._pausedSegmentStart > 0) {
       this._pausedAccumulatedMs += Date.now() - this._pausedSegmentStart
       this._pausedSegmentStart = 0
+      this._pauseEndedAt = Date.now()
     }
     this._segmentStart = Date.now()
     this._isRunning = true

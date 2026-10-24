@@ -62,6 +62,10 @@ export interface FocusSession {
   pauseMinutes?: number
   /** Break minutes measured from timestamps (tracked by FocusService). */
   breakMinutes?: number
+  /** Epoch-ms window of the break recorded with this session (C2). */
+  breakStartedAt?: number; breakEndedAt?: number
+  /** Epoch-ms window of the last pause recorded with this session (C2). */
+  pauseStartedAt?: number; pauseEndedAt?: number
 }
 
 export interface PlannerReminder {

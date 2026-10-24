@@ -105,15 +105,8 @@
             android:exported="false">
         </activity>
 
-        <!-- "Are you on track?" check-in shown over distracting apps. -->
-        <activity
-            android:name=".OnTrackActivity"
-            android:theme="@style/Theme.Transparent"
-            android:excludeFromRecents="true"
-            android:taskAffinity=""
-            android:launchMode="singleInstance"
-            android:exported="false">
-        </activity>
+        <!-- "Are you on track?" check-in no longer opens an activity: motivation is
+             notification-only (see FocusShieldManager.postCheckInNotification). -->
 
         <!-- YouTube Study Mode gate over the Home feed. -->
         <activity
