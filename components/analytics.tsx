@@ -79,7 +79,7 @@ export function Analytics() {
   const focusRange = useMemo(() => getFocusDataForRange(deferredRange, focusSessions, now), [deferredRange, focusSessions, now])
   const taskRange = useMemo(() => getTaskDataForRange(deferredRange, tasks, now), [deferredRange, tasks, now])
   const habitRange = useMemo(() => getHabitConsistencyForRange(deferredRange, habits, now), [deferredRange, habits, now])
-  const xpRange = useMemo(() => getXPDataForRange(deferredRange, focusSessions, tasks, now), [deferredRange, focusSessions, tasks, now])
+  const xpRange = useMemo(() => getXPDataForRange(deferredRange, focusSessions, tasks, now, events), [deferredRange, focusSessions, tasks, now, events])
   const stats = useMemo(() => getRangeSummaryStats(deferredRange, tasks, habits, focusSessions, now), [deferredRange, tasks, habits, focusSessions, now])
 
   const prevBoundaries = useMemo(() => getPreviousRangeBoundaries(deferredRange, now), [deferredRange, now])

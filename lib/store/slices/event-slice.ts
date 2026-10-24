@@ -1,5 +1,6 @@
 import { format } from 'date-fns'
 import { sanitizeString, sanitizeNumber, normalizeStudyEvent, sanitizeDate, sanitizeBoolean } from '../helpers'
+import { applyCompletionProgress, claimCreate, isDuplicateCreate } from '../completion'
 import { MAX_EVENTS } from '../constants'
 import { generateId } from '../../utils'
 import { syncPlannerAlarms, cancelAlarm } from '../../scheduling'
@@ -34,6 +35,8 @@ export const createEventSlice = (set: any, get: any, _api?: any): EventSlice => 
     try {
       const currentEvents = get().events
       if (currentEvents.length >= MAX_EVENTS) return
+      // R5: double-tapping "Add Task" fired this twice and produced twin events.
+      if (!claimCreate(event.title) || isDuplicateCreate(currentEvents, event.title)) return
       const normalized = normalizeStudyEvent({ ...event, id: generateId() }, get().plannerSettings)
       const newEvents = [...currentEvents, normalized]
       set({ events: newEvents })
@@ -75,17 +78,41 @@ export const createEventSlice = (set: any, get: any, _api?: any): EventSlice => 
   },
   markEventComplete: async (id, completed = true) => {
     const old = get().events.find((e: StudyEvent) => e.id === id)
-    if (completed && old && old.reminder?.enabled) {
+    if (!old) return
+    const wasCompleted = !!old.completed
+    if (completed && old.reminder?.enabled) {
       await cancelAlarm(id)
     }
-    set((state: any) => ({
-      events: state.events.map((event: StudyEvent) =>
-        event.id === id ? normalizeStudyEvent({
-          ...event, completed, completedAt: completed ? new Date() : undefined,
-          history: [...(event.history ?? []), { id: generateId(), at: new Date(), action: 'completed' as const, note: completed ? 'Marked complete' : 'Marked incomplete' }],
-        }, state.plannerSettings) : event
-      ),
-    }))
+    // Fix (a): completing a planner task used to write only `events[]`, so the
+    // XP bar, level, "Tasks done", achievements and analytics never moved —
+    // the task looked untouched everywhere except its own card. It now shares
+    // the exact same completion path as a task (R4).
+    const paysOut = completed && !wasCompleted && !old.xpAwarded
+    set((state: any) => {
+      const target = state.events.find((e: StudyEvent) => e.id === id)
+      if (!target) return state
+      return {
+        events: state.events.map((event: StudyEvent) =>
+          event.id === id ? normalizeStudyEvent({
+            ...event,
+            completed,
+            completedAt: completed ? new Date() : undefined,
+            xpAwarded: completed ? true : event.xpAwarded,
+            history: [...(event.history ?? []), {
+              id: generateId(),
+              at: new Date(),
+              action: completed ? 'completed' as const : 'reopened' as const,
+              note: completed ? 'Marked complete' : 'Marked incomplete',
+            }],
+          }, state.plannerSettings) : event
+        ),
+        ...(paysOut ? { progress: applyCompletionProgress(state.progress, target.priority) } : {}),
+      }
+    })
+    if (paysOut) {
+      try { get().checkAchievements() } catch {}
+      try { get().recalculateProductivityScore() } catch {}
+    }
   },
   attachFocusSessionToEvent: (eventId, focusSessionId, minutes, completed) => set((state: any) => ({
     events: state.events.map((event: StudyEvent) =>

@@ -104,8 +104,6 @@ export function Settings() {
   const setPreferredFocusDuration = useStore((s) => s.setPreferredFocusDuration)
   const timerSettings = useStore((s) => s.timerSettings)
   const setTimerSettings = useStore((s) => s.setTimerSettings)
-  const musicSettings = useStore((s) => s.musicSettings)
-  const setMusicSettings = useStore((s) => s.setMusicSettings)
   const reducedMotion = useStore((s) => s.reducedMotion)
   const setReducedMotion = useStore((s) => s.setReducedMotion)
   const avatar = useStore((s) => s.avatar)
@@ -151,8 +149,6 @@ export function Settings() {
   const [importError, setImportError] = useState<string | null>(null)
   const [showDurationModal, setShowDurationModal] = useState(false)
   const [durationInput, setDurationInput] = useState(preferredFocusDuration.toString())
-  const [showVolumeModal, setShowVolumeModal] = useState(false)
-  const [volumeInput, setVolumeInput] = useState(Math.round(musicSettings.maxVolumeLimit * 100).toString())
   const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false)
   const [showTermsOfService, setShowTermsOfService] = useState(false)
   const setShowAccessibilityDisclosure = useStore((s) => s.setShowAccessibilityDisclosure)
@@ -634,6 +630,14 @@ export function Settings() {
           <SettingRow icon={<RefreshCw className="w-4 h-4" />} title="Clear app cache" description="Refresh offline files; keep your data" onClick={() => void handleClearAppCache()} />
           <SettingRow icon={<Trash2 className="w-4 h-4" />} title="Clear all data" description="Permanently delete local data" onClick={() => setShowClearConfirm(true)} isLast />
         </Card>
+        {/* R6: backups cover the JSON store only. Imported ambient audio lives in
+            IndexedDB, so the copy has to say so instead of letting people believe
+            their music is inside the file. */}
+        <p className="mt-2 px-1 text-[11px] leading-relaxed text-muted-foreground">
+          Backups include your tasks, habits, planner, exams, focus history and settings as JSON.
+          <span className="text-foreground/80"> Imported ambient audio tracks are not included</span> — they stay in this device&apos;s
+          database, so re-import them after restoring a backup on another device.
+        </p>
       </SettingsSection>
 
       {/* ─── CREATOR / ABOUT ─────────────────────────────── */}
@@ -891,26 +895,6 @@ export function Settings() {
           </motion.div>
         </motion.div>
       )}
-      {showVolumeModal && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.15 }}
-          className="fixed inset-0 z-modal-backdrop flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
-          onClick={() => setShowVolumeModal(false)} role="dialog" aria-modal="true" aria-label="Set max volume">
-          <motion.div initial={{ scale: 0.92, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
-            transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-            onClick={(e) => e.stopPropagation()} className="w-full max-w-sm bg-card rounded-2xl border shadow-2xl p-6">
-            <h3 className="text-base font-semibold mb-1 text-foreground">Max volume limit</h3>
-            <p className="text-sm text-muted-foreground mb-5">Percentage (0–100)</p>
-            <input type="number" min={0} max={100} value={volumeInput}
-              onChange={(e) => setVolumeInput(e.target.value)}
-              className="w-full px-4 py-2.5 rounded-xl bg-secondary border-0 text-center text-lg font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
-              aria-label="Max volume percentage" />
-            <div className="flex gap-3 mt-5">
-              <Button variant="secondary" onClick={() => setShowVolumeModal(false)} className="flex-1">Cancel</Button>
-              <Button variant="primary" onClick={() => { const v = parseInt(volumeInput); if (v >= 0 && v <= 100) { setMusicSettings({ maxVolumeLimit: v / 100 }); setShowVolumeModal(false) } }} className="flex-1">Save</Button>
-            </div>
-          </motion.div>
-        </motion.div>
-      )}
       {showClearConfirm && (
         <motion.div
           initial={{ opacity: 0 }}
@@ -1055,6 +1039,13 @@ function AmbientSoundSection() {
   const setAmbientSoundEnabled = useStore((s) => s.setAmbientSoundEnabled)
   const ambientVolume = useStore((s) => s.ambientVolume)
   const setAmbientVolume = useStore((s) => s.setAmbientVolume)
+  // Fix (d): `musicSettings.maxVolumeLimit` had a modal but no opener anywhere in
+  // the UI, and nothing read the value. It now has an entry point here and caps
+  // the volume slider (and the audio service, see useAmbientAudio).
+  const maxVolumeLimit = useStore((s) => s.musicSettings.maxVolumeLimit)
+  const setMusicSettings = useStore((s) => s.setMusicSettings)
+  const [showMaxVolumeModal, setShowMaxVolumeModal] = useState(false)
+  const [maxVolumeInput, setMaxVolumeInput] = useState(String(Math.round(maxVolumeLimit * 100)))
 
   const { isPlaying, currentTrackName, stop, reloadTracks } = useAmbientAudio()
 
@@ -1165,16 +1156,56 @@ function AmbientSoundSection() {
             <input
               type="range"
               min={0}
-              max={100}
+              max={Math.max(1, Math.round(maxVolumeLimit * 100))}
               value={Math.round(ambientVolume * 100)}
               onChange={(e) => setAmbientVolume(Number(e.target.value) / 100)}
               aria-label="Ambient volume"
               aria-valuenow={Math.round(ambientVolume * 100)}
+              aria-valuemax={Math.round(maxVolumeLimit * 100)}
               className="w-full h-1.5 bg-secondary rounded-lg appearance-none cursor-pointer accent-primary"
             />
+            <button
+              type="button"
+              onClick={() => { setMaxVolumeInput(String(Math.round(maxVolumeLimit * 100))); setShowMaxVolumeModal(true) }}
+              className="flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-secondary/60"
+              aria-label="Set max volume limit"
+            >
+              <span className="text-xs text-muted-foreground">Max volume limit</span>
+              <span className="text-xs font-mono text-foreground">{Math.round(maxVolumeLimit * 100)}%</span>
+            </button>
           </div>
         )}
       </Card>
+
+      <AnimatePresence>
+        {showMaxVolumeModal && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.15 }}
+            className="fixed inset-0 z-modal-backdrop flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+            onClick={() => setShowMaxVolumeModal(false)} role="dialog" aria-modal="true" aria-label="Set max volume">
+            <motion.div initial={{ scale: 0.92, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+              transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+              onClick={(e) => e.stopPropagation()} className="w-full max-w-sm bg-card rounded-2xl border shadow-2xl p-6">
+              <h3 className="text-base font-semibold mb-1 text-foreground">Max volume limit</h3>
+              <p className="text-sm text-muted-foreground mb-5">Percentage (0–100)</p>
+              <input type="number" min={0} max={100} value={maxVolumeInput}
+                onChange={(e) => setMaxVolumeInput(e.target.value)}
+                className="w-full px-4 py-2.5 rounded-xl bg-secondary border-0 text-center text-lg font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+                aria-label="Max volume percentage" />
+              <div className="flex gap-3 mt-5">
+                <Button variant="secondary" onClick={() => setShowMaxVolumeModal(false)} className="flex-1">Cancel</Button>
+                <Button variant="primary" onClick={() => {
+                  const v = parseInt(maxVolumeInput)
+                  if (v >= 0 && v <= 100) {
+                    setMusicSettings({ maxVolumeLimit: v / 100 })
+                    if (ambientVolume > v / 100) setAmbientVolume(v / 100)
+                    setShowMaxVolumeModal(false)
+                  }
+                }} className="flex-1">Save</Button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Tracks Section (only when enabled) */}
       {ambientSoundEnabled && (

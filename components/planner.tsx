@@ -36,6 +36,8 @@ import { buildCarryForwardSuggestion, eventsOverlap, findNearestAvailableSlots }
 import { buildTimelineSlots } from '@/lib/planner/timeline'
 import { getEventsForDate, getTimelineBounds, normalizePlannerSettings } from '@/lib/planner/utils'
 import { type PlannerSettings, type StudyEvent, useStore } from '@/lib/store'
+import { completionXp } from '@/lib/store/completion'
+import { useToast } from '@/components/ui/toast'
 import { cn } from '@/lib/utils'
 
 function MonthGrid({
@@ -133,6 +135,7 @@ export function StudyPlanner() {
   const setCarryForwardSuggestion = useStore((state) => state.setCarryForwardSuggestion)
   const setActiveView = useStore((state) => state.setActiveView)
   const focusSessions = useStore((state) => state.focusSessions)
+  const { showToast } = useToast()
 
   const [currentDate, setCurrentDate] = useState(new Date())
   const [viewMode, setViewMode] = useState<PlannerViewMode>(plannerSettings.defaultView)
@@ -160,6 +163,15 @@ export function StudyPlanner() {
     () => normalizePlannerSettings(plannerSettings as Partial<PlannerSettings>),
     [plannerSettings]
   )
+
+  const handleToggleComplete = useCallback((event: StudyEvent) => {
+    const nextCompleted = !event.completed
+    markEventComplete(event.id, nextCompleted)
+    // Same feedback as the Tasks tab — one completion, one economy (R4).
+    if (nextCompleted && !event.xpAwarded) {
+      showToast({ type: 'xp', title: `+${completionXp(event.priority)} XP`, description: `Completed "${event.title}"` })
+    }
+  }, [markEventComplete, showToast])
 
   const launchFocus = useCallback((event: StudyEvent) => {
     const eventDuration = event.estimatedDuration ?? Math.max(1, Math.round((event.endTime.getTime() - event.startTime.getTime()) / 60000))
@@ -388,7 +400,7 @@ export function StudyPlanner() {
               onResizeShorter={(event) => resizeEvent(event, -15)}
               onResizeLonger={(event) => resizeEvent(event, 15)}
               onStartFocus={launchFocus}
-              onToggleComplete={(event) => markEventComplete(event.id, !event.completed)}
+              onToggleComplete={handleToggleComplete}
             />
           )}
 
@@ -427,7 +439,7 @@ export function StudyPlanner() {
                               event={event}
                               onOpen={() => openEditor(new Date(event.startTime), event)}
                               onStartFocus={() => launchFocus(event)}
-                              onToggleComplete={() => markEventComplete(event.id, !event.completed)}
+                              onToggleComplete={() => handleToggleComplete(event)}
                             />
                           </div>
                         ))
@@ -488,7 +500,7 @@ export function StudyPlanner() {
                             event={event}
                             onOpen={() => openEditor(new Date(event.startTime), event)}
                             onStartFocus={() => launchFocus(event)}
-                            onToggleComplete={() => markEventComplete(event.id, !event.completed)}
+                            onToggleComplete={() => handleToggleComplete(event)}
                           />
                         ))}
                       </div>

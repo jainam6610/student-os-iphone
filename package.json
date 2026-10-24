@@ -38,7 +38,7 @@
     "build": "next build",
     "start": "npx serve@latest out",
     "lint": "eslint .",
-    "check": "tsc --noEmit && eslint . && next build",
+    "check": "tsc --noEmit && eslint . && npx tsx scripts/store-migrations.test.mjs && npx tsx scripts/store-completion.test.mjs && next build",
     "check:types": "tsc --noEmit",
     "check:lint": "eslint .",
     "verify": "node scripts/verify-release.mjs",

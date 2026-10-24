@@ -71,7 +71,7 @@ export interface PlannerReminder {
 
 export interface PlannerTaskHistoryEntry {
   id: string; at: Date
-  action: 'created' | 'updated' | 'rescheduled' | 'resized' | 'completed' | 'focus-linked' | 'snoozed' | 'carried-forward'
+  action: 'created' | 'updated' | 'rescheduled' | 'resized' | 'completed' | 'reopened' | 'focus-linked' | 'snoozed' | 'carried-forward'
   note?: string
 }
 
@@ -84,6 +84,8 @@ export interface StudyEvent {
   repeatRule?: 'none' | 'daily' | 'weekdays' | 'weekly'
   notes?: string; difficulty?: number; energyLevel?: number
   completed?: boolean; completedAt?: Date
+  /** Set once the completion XP has been paid, so reopening cannot farm XP. */
+  xpAwarded?: boolean
   focusMinutes?: number; focusSessionIds?: string[]
   history?: PlannerTaskHistoryEntry[]; carryForwardSuggestedFor?: Date
 }

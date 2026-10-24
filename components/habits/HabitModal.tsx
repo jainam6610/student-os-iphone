@@ -207,13 +207,13 @@ export function HabitModal({ open, onClose, onSave, editingHabit }: HabitModalPr
                 type="button"
                 onClick={() => setCategory(cat)}
                 className={cn(
-                  'px-3 min-h-[44px] rounded-lg text-xs font-medium transition-all capitalize flex items-center gap-1',
+                  'px-3 min-h-[44px] rounded-lg text-xs font-medium transition-all capitalize flex items-center gap-1.5',
                   category === cat
                     ? 'bg-primary/20 text-primary'
                     : 'bg-surface-variant/30 text-on-surface-variant hover:bg-surface-variant/50'
                 )}
               >
-                <span className="text-[14px] leading-none">{CATEGORY_META[cat]?.emoji}</span>
+                <HabitIcon name={CATEGORY_META[cat]?.icon} size={14} className="shrink-0" />
                 {CATEGORY_META[cat]?.label || cat}
               </button>
             ))}

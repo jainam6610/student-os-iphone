@@ -1,6 +1,7 @@
 import { format } from 'date-fns'
 import { sanitizeNumber, calculateLevel } from '../helpers'
 import { MAX_XP } from '../constants'
+import { countCompletedWork } from '../completion'
 import type { Achievement, UserProgress, ProductivityScore } from '../types'
 
 export interface ProgressSlice {
@@ -66,13 +67,20 @@ export const createProgressSlice = (set: any, get: any, _api?: any): ProgressSli
     ),
   })),
   checkAchievements: () => set((state: any) => {
-    const totalFocusMin = state.focusSessions.filter((s: any) => s.type !== 'break').reduce((acc: number, s: any) => acc + s.duration, 0)
-    const completedTasks = state.tasks.filter((t: any) => t.status === 'done').length
+    // Fix (c): achievements (and streaks) stay on *completed* sessions only —
+    // a stopped-early session counts its minutes in analytics totals, but it
+    // must never unlock "First Focus", "10 Hours", "Early Bird" or "Night Owl".
+    const completedSessions = state.focusSessions.filter((s: any) =>
+      s.type !== 'break' && (s.completed === true || s.status === 'completed')
+    )
+    const totalFocusMin = completedSessions.reduce((acc: number, s: any) => acc + s.duration, 0)
+    // R4: planner events completed count toward the task achievements too.
+    const completedTasks = countCompletedWork(state.tasks, state.events)
     const currentStreak = state.progress.currentStreak
     const updated = state.achievements.map((a: Achievement) => {
       if (a.unlocked) return a
       switch (a.id) {
-        case 'first-focus': return state.focusSessions.length > 0 ? { ...a, unlocked: true, unlockedAt: new Date() } : a
+        case 'first-focus': return completedSessions.length > 0 ? { ...a, unlocked: true, unlockedAt: new Date() } : a
         case 'ten-hours': return totalFocusMin >= 600 ? { ...a, unlocked: true, unlockedAt: new Date() } : { ...a, progress: totalFocusMin }
         case 'hundred-hours': return totalFocusMin >= 6000 ? { ...a, unlocked: true, unlockedAt: new Date() } : { ...a, progress: totalFocusMin }
         case 'streak-7': return currentStreak >= 7 ? { ...a, unlocked: true, unlockedAt: new Date() } : { ...a, progress: currentStreak }
@@ -84,15 +92,15 @@ export const createProgressSlice = (set: any, get: any, _api?: any): ProgressSli
           return uniqueHabitDays >= 30 ? { ...a, unlocked: true, unlockedAt: new Date() } : { ...a, progress: uniqueHabitDays }
         }
         case 'early-bird': {
-          const before8am = state.focusSessions.filter((s: any) => {
-            if (!s.startTime || s.type === 'break') return false
+          const before8am = completedSessions.filter((s: any) => {
+            if (!s.startTime) return false
             return new Date(s.startTime).getHours() < 8
           }).length
           return before8am >= 5 ? { ...a, unlocked: true, unlockedAt: new Date() } : { ...a, progress: before8am }
         }
         case 'night-owl': {
-          const after10pm = state.focusSessions.filter((s: any) => {
-            if (!s.startTime || s.type === 'break') return false
+          const after10pm = completedSessions.filter((s: any) => {
+            if (!s.startTime) return false
             return new Date(s.startTime).getHours() >= 22
           }).length
           return after10pm >= 5 ? { ...a, unlocked: true, unlockedAt: new Date() } : { ...a, progress: after10pm }

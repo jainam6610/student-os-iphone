@@ -40,10 +40,12 @@ export function useAmbientAudio() {
     }
   }, [])
 
-  // Sync volume from store to service
+  // Sync volume from store to service, capped by the user's max-volume limit
+  // (Settings → Ambient sound → Max volume limit).
+  const maxVolumeLimit = useStore((s) => s.musicSettings.maxVolumeLimit)
   useEffect(() => {
-    ambientAudio.setVolume(ambientVolume)
-  }, [ambientVolume])
+    ambientAudio.setVolume(Math.min(ambientVolume, maxVolumeLimit))
+  }, [ambientVolume, maxVolumeLimit])
 
   // Stop audio when user disables ambient sound
   useEffect(() => {

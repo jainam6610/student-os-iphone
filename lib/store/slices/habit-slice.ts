@@ -1,6 +1,7 @@
 import { format } from 'date-fns'
 import { sanitizeString, sanitizeNumber } from '../helpers'
 import { MAX_HABITS } from '../constants'
+import { claimCreate, isDuplicateCreate } from '../completion'
 import { generateId } from '../../utils'
 import { syncHabitAlarms, cancelAlarm, dismissAlarm } from '../../scheduling'
 import type { HabitSettings } from '../../habits/types'
@@ -54,20 +55,19 @@ export interface HabitSlice {
 }
 
 export const createHabitSlice = (set: any, get: any, _api?: any): HabitSlice => ({
-  habits: [
-    { id: '1', name: 'Morning Study', icon: '📚', color: 'blue', category: 'study', frequency: 'daily', completedDates: [], streak: 0, bestStreak: 7, createdAt: new Date() },
-    { id: '2', name: 'Exercise', icon: '🏃', color: 'green', category: 'fitness', frequency: 'daily', completedDates: [], streak: 0, bestStreak: 14, createdAt: new Date() },
-    { id: '3', name: 'Review Notes', icon: '📝', color: 'purple', category: 'study', frequency: 'daily', completedDates: [], streak: 0, bestStreak: 21, createdAt: new Date() },
-  ],
+  habits: [],
   addHabit: async (habit) => {
     set((state: any) => {
       if (state.habits.length >= MAX_HABITS) return state
+      const name = sanitizeString(habit.name, 'Habit', 100)
+      // R5: a double-tap on "Create Habit" must not create two identical habits.
+      if (!claimCreate(name) || isDuplicateCreate(state.habits, name)) return state
       const now = new Date()
       const id = generateId()
       const newHabit: Habit = {
         ...habit,
         id,
-        name: sanitizeString(habit.name, 'Habit', 100),
+        name,
         completedDates: [],
         streak: 0,
         bestStreak: 0,
@@ -225,10 +225,13 @@ export const createHabitSlice = (set: any, get: any, _api?: any): HabitSlice => 
       const original = state.habits.find((h: Habit) => h.id === id)
       if (!original || state.habits.length >= MAX_HABITS) return state
       const now = new Date()
+      const copyName = `${original.name} (Copy)`
+      // R5: double-tapping "Duplicate" must not create two copies.
+      if (!claimCreate(copyName) || isDuplicateCreate(state.habits, copyName)) return state
       const copy: Habit = {
         ...original as any,
         id: generateId(),
-        name: `${original.name} (Copy)`,
+        name: copyName,
         completedDates: [],
         skippedDates: [],
         streak: 0, bestStreak: 0, currentStreak: 0, longestStreak: 0,

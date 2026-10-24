@@ -65,6 +65,8 @@ export function InlineTaskEditor({ visible, initialDate, event, onClose }: Inlin
   const [durationMin, setDurationMin] = useState<number>(event ? durationFromEvent(event) : 0)
   const [completed, setCompleted] = useState<boolean>(event?.completed ?? false)
   const [saving, setSaving] = useState(false)
+  // R5: a double-tap on the save button used to fire two creates.
+  const submittingRef = useRef(false)
 
   useEffect(() => {
     if (visible && inputRef.current) {
@@ -85,6 +87,8 @@ export function InlineTaskEditor({ visible, initialDate, event, onClose }: Inlin
 
   const handleSave = useCallback(() => {
     if (!title.trim() || !timeStr || durationMin < 15) return
+    if (submittingRef.current) return
+    submittingRef.current = true
     setSaving(true)
     try {
       const [h, m] = timeStr.split(':').map(Number)
@@ -120,6 +124,7 @@ export function InlineTaskEditor({ visible, initialDate, event, onClose }: Inlin
       onClose()
     } catch (e) {
       console.error('Save failed:', e)
+      submittingRef.current = false
       setSaving(false)
     }
   }, [title, category, timeStr, durationMin, dateStr, event, completed, onClose])

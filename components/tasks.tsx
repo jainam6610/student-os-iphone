@@ -1,8 +1,9 @@
 'use client'
 
-import { useState, useMemo, memo, useCallback } from 'react'
+import { useState, useMemo, memo, useCallback, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useStore, type Task } from '@/lib/store'
+import { completionXp } from '@/lib/store/completion'
 import { staggerContainer, staggerItem, spring, listItemPop } from './motion'
 import { Card } from './ui/glass-card'
 import { Modal } from './modal'
@@ -53,8 +54,7 @@ export function TaskManagement() {
   const handleComplete = useCallback((task: Task) => {
     if (task.status === 'done') return
     completeTask(task.id)
-    const xpGain = task.priority === 'high' ? 50 : task.priority === 'medium' ? 30 : 15
-    showToast({ type: 'xp', title: `+${xpGain} XP`, description: `Completed "${task.title}"` })
+    showToast({ type: 'xp', title: `+${completionXp(task.priority)} XP`, description: `Completed "${task.title}"` })
   }, [completeTask, showToast])
 
   const handleAddTask = useCallback((task: Omit<Task, 'id' | 'createdAt'>) => {
@@ -314,10 +314,13 @@ function AddTaskModal({ onClose, onAdd }: { onClose: () => void; onAdd: (task: O
   const [subject, setSubject] = useState('')
   const [priority, setPriority] = useState<Task['priority']>('medium')
   const [dueDate, setDueDate] = useState('')
+  // R5: ignore repeat submits from a double-tap before the sheet unmounts.
+  const submittingRef = useRef(false)
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!title.trim()) return
+    if (!title.trim() || submittingRef.current) return
+    submittingRef.current = true
     onAdd({ title: title.trim(), description, subject, priority, status: 'todo', dueDate: dueDate ? new Date(dueDate) : undefined })
   }
 

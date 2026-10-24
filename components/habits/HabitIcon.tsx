@@ -6,12 +6,15 @@ import {
   BedDouble,
   BookOpen,
   Brain,
+  Briefcase,
   Brush,
   Coffee,
   Droplet,
   Dumbbell,
   Flower2,
   Footprints,
+  GraduationCap,
+  Heart,
   Leaf,
   Library,
   Moon,
@@ -24,6 +27,8 @@ import {
   Target,
   Trees,
   Umbrella,
+  User,
+  Users,
   Utensils,
   Zap,
 } from 'lucide-react'
@@ -60,6 +65,14 @@ const LUCIDE_ICONS: Record<string, LucideIcon> = {
   beach_access: Umbrella,
   sunny: Sun,
   star: Star,
+  // Fix (b): category chips used to render a raw emoji text glyph (which falls
+  // back to tofu/word text on WebViews without a colour emoji font). They now
+  // use the same deterministic Lucide set as the habit icons.
+  favorite: Heart,
+  school: GraduationCap,
+  person: User,
+  work: Briefcase,
+  group: Users,
 }
 
 const EMOJI_FONT_STACK =

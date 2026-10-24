@@ -1,5 +1,6 @@
 import { format, addDays, addMonths, startOfWeek, isSameDay, startOfMonth, endOfMonth, startOfDay, eachDayOfInterval, subDays, subMonths, subYears } from 'date-fns'
-import type { FocusSession, Task, Habit } from './store'
+import type { FocusSession, Task, Habit, StudyEvent } from './store'
+import { completionXp } from './store/completion'
 
 export interface FocusAnalytics {
   totalFocusTime: number
@@ -471,33 +472,41 @@ export function getXPDataForRange(
   range: AnalyticsRange,
   sessions: FocusSession[],
   tasks: Task[],
-  now: Date = new Date()
+  now: Date = new Date(),
+  events: StudyEvent[] = []
 ): XpRangeData {
   const boundaries = getRangeBoundaries(range, now)
-  const events: { date: Date; xp: number }[] = []
+  const xpEvents: { date: Date; xp: number }[] = []
   for (const s of sessions) {
     if (!isCountedSession(s)) continue
     const d = getSessionDateOf(s)
     if (!d || d.getTime() > now.getTime()) continue
-    events.push({ date: d, xp: Math.floor(sessionDuration(s) * 2) })
+    xpEvents.push({ date: d, xp: Math.floor(sessionDuration(s) * 2) })
   }
   for (const t of tasks) {
     if (t.status !== 'done') continue
     const d = t.completedAt ?? t.createdAt
     if (!(d instanceof Date) || Number.isNaN(d.getTime()) || d.getTime() > now.getTime()) continue
-    events.push({ date: d, xp: t.priority === 'high' ? 50 : t.priority === 'medium' ? 30 : 15 })
+    xpEvents.push({ date: d, xp: t.priority === 'high' ? 50 : t.priority === 'medium' ? 30 : 15 })
   }
-  events.sort((a, b) => a.date.getTime() - b.date.getTime())
+  // R4: planner-event completions pay the same XP, so the XP chart has to see them.
+  for (const event of events) {
+    if (!event.completed) continue
+    const d = event.completedAt ?? event.startTime
+    if (!(d instanceof Date) || Number.isNaN(d.getTime()) || d.getTime() > now.getTime()) continue
+    xpEvents.push({ date: d, xp: completionXp(event.priority) })
+  }
+  xpEvents.sort((a, b) => a.date.getTime() - b.date.getTime())
 
   let earliest: Date | undefined
-  for (const e of events) {
+  for (const e of xpEvents) {
     if (!earliest || e.date.getTime() < earliest.getTime()) earliest = e.date
   }
   const start = resolveStart(boundaries, earliest)
   const period = start ? buildPeriod(start, boundaries.end, boundaries.granularity) : []
 
   const sums: number[] = period.map(() => 0)
-  for (const e of events) {
+  for (const e of xpEvents) {
     const i = getPeriodIndex(period, e.date)
     if (i < 0) continue
     sums[i] += e.xp
