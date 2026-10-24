@@ -1,6 +1,6 @@
 import { format } from 'date-fns'
 import { sanitizeString, sanitizeNumber, normalizeStudyEvent, sanitizeDate, sanitizeBoolean } from '../helpers'
-import { applyCompletionProgress, claimCreate, isDuplicateCreate } from '../completion'
+import { applyCompletionProgress, claimCreate, isDuplicateCreate, releaseCreate } from '../completion'
 import { MAX_EVENTS } from '../constants'
 import { generateId } from '../../utils'
 import { syncPlannerAlarms, cancelAlarm } from '../../scheduling'
@@ -56,6 +56,8 @@ export const createEventSlice = (set: any, get: any, _api?: any): EventSlice => 
     await syncPlannerAlarms(get().events)
   },
   deleteEvent: async (id) => {
+    const event = get().events.find((e: StudyEvent) => e.id === id)
+    if (event) releaseCreate(event.title)
     await cancelAlarm(id)
     set((state: any) => ({ events: state.events.filter((e: StudyEvent) => e.id !== id) }))
     await syncPlannerAlarms(get().events)

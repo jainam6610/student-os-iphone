@@ -1,7 +1,7 @@
 import { format } from 'date-fns'
 import { sanitizeString, sanitizeNumber } from '../helpers'
 import { MAX_HABITS } from '../constants'
-import { claimCreate, isDuplicateCreate } from '../completion'
+import { claimCreate, isDuplicateCreate, releaseCreate } from '../completion'
 import { generateId } from '../../utils'
 import { syncHabitAlarms, cancelAlarm, dismissAlarm } from '../../scheduling'
 import type { HabitSettings } from '../../habits/types'
@@ -105,6 +105,7 @@ export const createHabitSlice = (set: any, get: any, _api?: any): HabitSlice => 
   },
   deleteHabit: async (id) => {
     const habit = get().habits.find((h: Habit) => h.id === id)
+    if (habit) releaseCreate(habit.name)
     if (habit && (habit.alarmEnabled || habit.reminder?.enabled)) {
       for (const timeStr of (habit.reminder?.times || [])) {
         await cancelAlarm(`${habit.id}-${timeStr}`)

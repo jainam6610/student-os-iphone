@@ -90,6 +90,15 @@ export function claimCreate(title: string, windowMs: number = DUPLICATE_CREATE_W
   return true
 }
 
+/**
+ * Releases a claim so that deleting an item and immediately re-creating the
+ * same title still works (delete → "New task" → same name, within the window).
+ */
+export function releaseCreate(title: string): void {
+  const key = title.trim().toLowerCase()
+  if (key) recentCreates.delete(key)
+}
+
 export function isDuplicateCreate(
   existing: ReadonlyArray<{ title?: string; name?: string; createdAt?: Date | string }>,
   title: string,
