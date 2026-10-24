@@ -349,6 +349,9 @@ class BlockingEngine(
      */
     val hasBreakBlockedPackages: Boolean
         get() = breakBlockedPackages.isNotEmpty()
+    /** True when an idle 24/7 app list needs foreground enforcement. */
+    val hasAlwaysBlockedPackages: Boolean
+        get() = categoryCache.values.any { it == CategoryType.ALWAYS_BLOCKED }
 
     fun updateBreakBlockedPackages(packages: Set<String>) {
         breakBlockedPackages.clear()

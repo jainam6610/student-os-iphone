@@ -439,7 +439,7 @@ class WarningActivity : AppCompatActivity() {
     private fun dismissWarning() {
         try {
             // Surface blocks: reset the latch but do not grant a re-entry pass.
-            FocusShieldBridge.getManager()?.onWarningDismissed(packageName, !surfaceBlock)
+            FocusShieldBridge.getManager()?.onWarningDismissed(packageName)
         } catch (e: Exception) {
             Log.e(TAG, "dismissWarning() error", e)
         }

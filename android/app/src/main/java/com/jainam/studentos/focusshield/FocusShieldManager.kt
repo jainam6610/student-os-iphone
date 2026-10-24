@@ -147,21 +147,15 @@ class FocusShieldManager(context: Context) {
 
     companion object {
         private const val TAG = "[FocusShield] FocusShieldManager"
-        // The poller is only a fallback for phones that drop accessibility events.
-        // While events are flowing it does no work at all (see startForegroundPoller).
-        private const val POLLER_INTERVAL_MS = 12_000L
-        /** If an accessibility event arrived this recently, skip the poll tick. */
-        private const val POLLER_EVENT_GRACE_MS = 9_000L
+        // Poll quickly only when the accessibility stream is quiet, so missed
+        // foreground events are recovered before a blocked app can linger.
+        private const val POLLER_INTERVAL_MS = 1_000L
+        /** Let the event path settle, then use UsageStats as a fast fallback. */
+        private const val POLLER_EVENT_GRACE_MS = 750L
         /** Debounce identical package+activity bursts on the event path. */
         private const val EVENT_DEBOUNCE_MS = 250L
-        // Break poller runs less frequently (5s) since it only checks a small list.
-        private const val BREAK_POLLER_INTERVAL_MS = 5_000L
-        // Grace window right after a warning is dismissed: prevents the dismissal
-        // itself from instantly re-triggering the warning for the same package
-        // (the 500ms block cooldown is cleared on dismiss, see onWarningDismissed).
-        // Must stay comfortably above POLLER_INTERVAL_MS or the next poll fires a
-        // second warning for the app the user just closed.
-        private const val WARNING_DISMISS_GRACE_MS = 6_000L
+        // Break enforcement also needs to recover quickly when OEMs drop events.
+        private const val BREAK_POLLER_INTERVAL_MS = 1_000L
         // Browser URL scanning is throttled: browsers emit content-change events
         // continuously and walking the view tree on every one would burn battery.
         private const val URL_SCAN_INTERVAL_MS = 900L
@@ -442,6 +436,7 @@ class FocusShieldManager(context: Context) {
                     }
                 } else {
                     Log.i(TAG, "restoreNativeState() — no active session, detector remains idle")
+                    syncForegroundPoller()
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "restoreNativeState() — error during rehydration", e)
@@ -703,7 +698,7 @@ class FocusShieldManager(context: Context) {
         focusSessionManager.stopSession()
         isDetectorActive.set(false)
         isBreakBlockerActive.set(false)
-        stopForegroundPoller()
+        syncForegroundPoller()
         stopBreakPoller()
         blockingEngine.resetSessionCounters()
         clearShortFormSessionState()
@@ -727,7 +722,7 @@ class FocusShieldManager(context: Context) {
         focusSessionManager.stopSession()
         isDetectorActive.set(false)
         isBreakBlockerActive.set(false)
-        stopForegroundPoller()
+        syncForegroundPoller()
         stopBreakPoller()
         blockingEngine.resetSessionCounters()
         clearShortFormSessionState()
@@ -739,7 +734,7 @@ class FocusShieldManager(context: Context) {
         focusSessionManager.completeSession()
         isDetectorActive.set(false)
         isBreakBlockerActive.set(false)
-        stopForegroundPoller()
+        syncForegroundPoller()
         stopBreakPoller()
         blockingEngine.resetSessionCounters()
         clearShortFormSessionState()
@@ -767,22 +762,13 @@ class FocusShieldManager(context: Context) {
     }
 
     @JvmOverloads
-    fun onWarningDismissed(packageName: String? = null, grantGracePass: Boolean = true) {
-        Log.i(TAG, "onWarningDismissed() — resetting warning screen flag, pkg=$packageName gracePass=$grantGracePass")
+    fun onWarningDismissed(packageName: String? = null) {
+        Log.i(TAG, "onWarningDismissed() — resetting warning screen flag, pkg=$packageName")
         blockingEngine.resetWarningScreen()
 
-        // Clear the block cooldown for the dismissed package so re-opening it is
-        // caught again by the next accessibility event / poll. For app-level
-        // blocks a short grace pass is granted so the dismiss itself cannot
-        // instantly re-open the warning (dialog loop). Surface blocks
-        // (Shorts/Reels/URL) skip the pass — otherwise reopening the player
-        // within the window slipped straight through the block.
-        if (packageName != null) {
-            blockingEngine.getCooldownManager().clearCooldown(packageName)
-            if (grantGracePass) {
-                blockingEngine.getCooldownManager().grantPass(packageName, WARNING_DISMISS_GRACE_MS)
-            }
-        }
+        // Dismissing the warning must not create an app pass. Only the explicit
+        // emergency-pass action may let a blocked app open temporarily.
+        packageName?.let { blockingEngine.getCooldownManager().clearCooldown(it) }
 
         scope.launch {
             try {
@@ -873,6 +859,7 @@ class FocusShieldManager(context: Context) {
                 blockingEngine.updateBreakBlockedPackages(packages + breakPkgs)
                 blockingEngine.setBreakBlockingEnabled(packages.isNotEmpty() || breakPkgs.isNotEmpty())
                 blockingEngine.refreshCategoryCache()
+                syncForegroundPoller()
                 Log.i(TAG, "updateAlwaysBlockedList() updated — ${packages.size} always, ${breakPkgs.size} break-only")
             } catch (e: Exception) {
                 Log.e(TAG, "updateAlwaysBlockedList() failed", e)
@@ -911,6 +898,7 @@ class FocusShieldManager(context: Context) {
                 blockingEngine.updateBreakBlockedPackages(alwaysBlocked + breakOnly)
                 blockingEngine.setBreakBlockingEnabled(breakOnly.isNotEmpty() || alwaysBlocked.isNotEmpty())
                 blockingEngine.refreshCategoryCache()
+                syncForegroundPoller()
                 Log.i(TAG, "updateBreakBlockedList() updated — ${breakOnly.size} break-only, ${alwaysBlocked.size} always")
             } catch (e: Exception) {
                 Log.e(TAG, "updateBreakBlockedList() failed", e)
@@ -1054,7 +1042,7 @@ class FocusShieldManager(context: Context) {
         // open, so the old session-only early return made them unreachable.
         val shieldActive = isDetectorActive.get() || isBreakBlockerActive.get()
         val alwaysOnContent = blockingEngine.hasAlwaysOnContent
-        if (!shieldActive && !alwaysOnContent && !blockingEngine.hasBreakBlockedPackages) {
+        if (!shieldActive && !alwaysOnContent && !blockingEngine.hasAlwaysBlockedPackages) {
             return
         }
         lastAccessibilityEventAt = System.currentTimeMillis()
@@ -1279,20 +1267,20 @@ class FocusShieldManager(context: Context) {
     }
 
     /**
-     * Longest text/content-description inside the player, trimmed. Titles and
-     * channel handles are long and change per short; like counts are short, so
-     * the longest string is the most stable per-item signature.
+     * Longest visible text/content-description inside the player, trimmed.
+     * Hidden YouTube fragments can retain stale titles, so ignore invisible
+     * nodes. Titles and channel handles are useful per-item signatures.
      */
     private fun shortFormContentSignature(player: android.view.accessibility.AccessibilityNodeInfo): String {
         val queue = ArrayDeque<android.view.accessibility.AccessibilityNodeInfo>()
         queue.addLast(player)
         var visited = 0
         var best: String = ""
-        while (queue.isNotEmpty() && visited < 90) {
+        while (queue.isNotEmpty() && visited < 400) {
             val node = queue.removeFirst()
             visited++
             try {
-                val raw = node.text?.toString() ?: node.contentDescription?.toString()
+                val raw = if (node.isVisibleToUser) node.text?.toString() ?: node.contentDescription?.toString() else null
                 val t = raw?.trim() ?: ""
                 if (t.length in 6..120 && t.any { it.isLetter() } && t.length > best.length) {
                     best = t
@@ -1877,16 +1865,25 @@ class FocusShieldManager(context: Context) {
         }
     }
 
+    private fun syncForegroundPoller() {
+        if (isDetectorActive.get() || blockingEngine.hasAlwaysBlockedPackages) {
+            startForegroundPoller()
+        } else {
+            stopForegroundPoller()
+        }
+    }
+
     private fun startForegroundPoller() {
         foregroundPollerJob?.cancel()
         foregroundPollerJob = scope.launch(Dispatchers.IO) {
-            // FIX: Immediate first check — no 10s dead zone on session start
-            if (isDetectorActive.get()) {
+            // Check once immediately and continue while a session or 24/7 list
+            // requires enforcement.
+            if (isDetectorActive.get() || blockingEngine.hasAlwaysBlockedPackages) {
                 checkCurrentForegroundAndBlock()
             }
-            while (isDetectorActive.get()) {
+            while (isDetectorActive.get() || blockingEngine.hasAlwaysBlockedPackages) {
                 delay(POLLER_INTERVAL_MS)
-                if (!isDetectorActive.get()) break
+                if (!isDetectorActive.get() && !blockingEngine.hasAlwaysBlockedPackages) break
                 // Events are arriving: the event path already made the decision.
                 if (System.currentTimeMillis() - lastAccessibilityEventAt < POLLER_EVENT_GRACE_MS) continue
                 checkCurrentForegroundAndBlock()
@@ -1932,7 +1929,7 @@ class FocusShieldManager(context: Context) {
         try {
             val currentPkg = getCurrentForegroundApp()
             if (currentPkg != null && currentPkg != selfPackageName && currentPkg != "com.jainam.studentos") {
-                if (currentPkg == lastEventPkg && (System.currentTimeMillis() - lastEventTime) < 5000) {
+                if (currentPkg == lastEventPkg && (System.currentTimeMillis() - lastEventTime) < POLLER_EVENT_GRACE_MS) {
                     // Already handled by accessibility event
                 } else {
                     val isEssential = essentialSystemLayer.checkPackage(currentPkg) != null
