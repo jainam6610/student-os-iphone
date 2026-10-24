@@ -99,7 +99,7 @@ export default function RootLayout({
         <Script id="register-sw" strategy="afterInteractive">
 {`if ('serviceWorker' in navigator) {
   window.addEventListener('load', function() {
-    navigator.serviceWorker.register('/sw.js?v=9').then(function(reg) {
+    navigator.serviceWorker.register('/sw.js?v=10').then(function(reg) {
       // Auto-update: activate new SW immediately — controllerchange handles reload
       reg.addEventListener('updatefound', function() {
         var newWorker = reg.installing;

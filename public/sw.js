@@ -7,8 +7,9 @@
 
 // ─── Version ───
 // INCREMENT ON EVERY DEPLOY to force cache invalidation.
-// Must match or exceed the value in the deploy script.
-const SW_VERSION = 9
+// Must match the `?v=` query in the registration URL (app/layout.tsx).
+// scripts/verify-release.mjs fails the build if the two drift apart (R9).
+const SW_VERSION = 10
 const CACHE_PREFIX = `os-v${SW_VERSION}-`
 
 const CACHES = {
@@ -44,11 +45,14 @@ self.addEventListener('install', (event) => {
   event.waitUntil(
     (async () => {
       const cache = await caches.open(CACHES.SHELL)
-      await Promise.allSettled(
-        PRECACHE_URLS.map((url) =>
-          cache.add(url).catch(() => {})
-        )
-      )
+      // R7: install MUST fail when the shell cannot be cached.
+      //
+      // This used to settle every cache.add() individually and swallow the
+      // failures, which meant a deploy that renamed or dropped a shell file still
+      // produced an active worker that claimed the page while having nothing to
+      // serve offline. `addAll` rejects on the first failure, the install is
+      // discarded, and the previous working worker stays in control.
+      await cache.addAll(PRECACHE_URLS)
     })()
   )
   self.skipWaiting()

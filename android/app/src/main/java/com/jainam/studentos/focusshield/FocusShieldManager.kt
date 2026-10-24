@@ -1660,10 +1660,12 @@ class FocusShieldManager(context: Context) {
      */
     private fun postCheckInNotification(packageName: String) {
         try {
-            val appName = try { appDetector.getAppName(packageName) } catch (_: Exception) { packageName }
+            // getAppName() is a suspend DAO lookup and this runs on the event
+            // thread, so the copy stays generic (the per-app line comes from
+            // MotivationEngine, which is pure).
             val body = MotivationEngine.getAppTitle(packageName)
             val entityId = "checkin-$packageName"
-            ThoughtNotifier.show(appContext, entityId, "Still on $appName?", body)
+            ThoughtNotifier.show(appContext, entityId, "Still on it?", body)
             Log.i(TAG, "checkIn: notification posted for $packageName")
         } catch (e: Exception) {
             Log.w(TAG, "checkIn: could not post notification", e)

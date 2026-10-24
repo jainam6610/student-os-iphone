@@ -156,6 +156,26 @@ export function Settings() {
   const [showLicenses, setShowLicenses] = useState(false)
   const [showAboutInfo, setShowAboutInfo] = useState(false)
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermissionState>('default')
+  // R10: the About card shows the *installed* package version + versionCode
+  // (App.getInfo().build) instead of a hardcoded string, so it cannot drift.
+  const [packageInfo, setPackageInfo] = useState<{ version: string; build: string } | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    if (!Capacitor.isNativePlatform()) return
+    ;(async () => {
+      try {
+        const { App } = await import('@capacitor/app')
+        const info = await App.getInfo()
+        if (!cancelled) {
+          setPackageInfo({ version: info.version, build: info.build })
+        }
+      } catch {
+        /* non-native or plugin unavailable — fall back to the env version */
+      }
+    })()
+    return () => { cancelled = true }
+  }, [])
 
   useEffect(() => {
     setNotificationPermission(getNotificationPermission())
@@ -701,7 +721,10 @@ export function Settings() {
             <Sparkles className="w-5 h-5 text-primary" />
           </motion.div>
           <h4 className="text-sm font-semibold text-foreground">Student OS</h4>
-          <p className="text-xs text-muted-foreground">Version {process.env.NEXT_PUBLIC_APP_VERSION ?? '1.1.0'}</p>
+          <p className="text-xs text-muted-foreground">
+            Version {packageInfo?.version ?? process.env.NEXT_PUBLIC_APP_VERSION ?? '1.3.1'}
+            {' · '}Build {packageInfo?.build ?? '—'}
+          </p>
           <p className="text-[10px] text-muted-foreground/60 mt-1.5">Made with ♥ by Jainam</p>
         </Card>
       </motion.div>

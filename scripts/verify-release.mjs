@@ -142,6 +142,88 @@ check('No debug flags', () => {
   }
 })
 
+// ── 6. Service worker version matches its registration URL (R9) ──
+check('Service worker version consistency', () => {
+  const sw = readFileSync(resolve(root, 'public/sw.js'), 'utf8')
+  const layout = readFileSync(resolve(root, 'app/layout.tsx'), 'utf8')
+
+  const [, swVersion] = sw.match(/SW_VERSION\s*=\s*(\d+)/) ?? []
+  const [, regVersion] = layout.match(/serviceWorker\.register\('\/sw\.js\?v=(\d+)'\)/) ?? []
+
+  if (!swVersion) {
+    fail('public/sw.js is missing SW_VERSION')
+    return
+  }
+  if (!regVersion) {
+    fail("app/layout.tsx is missing the '/sw.js?v=N' registration")
+    return
+  }
+  if (swVersion === regVersion) {
+    pass(`SW_VERSION ${swVersion} matches registration ?v=${regVersion}`)
+  } else {
+    fail(`SW_VERSION ${swVersion} ≠ registration ?v=${regVersion} — bump both together`)
+  }
+})
+
+// ── 7. About build number comes from the installed package (R10) ──
+check('About build number source', () => {
+  const settings = readFileSync(resolve(root, 'components/settings.tsx'), 'utf8')
+  const gradle = readFileSync(resolve(root, 'android/app/build.gradle'), 'utf8')
+  const [, versionCode] = gradle.match(/versionCode\s+(\d+)/) ?? []
+
+  if (!versionCode) {
+    fail('android/app/build.gradle has no versionCode')
+    return
+  }
+  // The About card must read the real package build (App.getInfo().build), so it
+  // can never drift from versionCode; a hardcoded string would.
+  if (settings.includes('App.getInfo()')) {
+    pass(`About reads App.getInfo() (build = versionCode ${versionCode})`)
+  } else {
+    fail('About does not read App.getInfo() — build number can drift from versionCode')
+  }
+})
+
+// ── 8. Service worker install fails when the shell is missing (R7) ──
+check('Service worker shell integrity', () => {
+  const sw = readFileSync(resolve(root, 'public/sw.js'), 'utf8')
+  // Only the install handler matters: activate() legitimately settles cache
+  // deletions individually.
+  const installMatch = sw.match(/addEventListener\('install'[\s\S]*?\n\}\)/)
+  const install = installMatch ? installMatch[0] : ''
+
+  if (!install) {
+    fail('public/sw.js has no install handler')
+  } else if (/allSettled/.test(install) || /\.catch\(\(\)\s*=>/.test(install)) {
+    fail('install swallows cache failures — a missing shell file would still activate')
+  } else if (install.includes('cache.addAll(PRECACHE_URLS)')) {
+    pass('install uses cache.addAll(PRECACHE_URLS) — a missing shell file fails the install')
+  } else {
+    fail('install does not precache the shell with cache.addAll')
+  }
+
+  // Every precached URL must exist in the exported build (run after `pnpm build`).
+  let urls = []
+  try {
+    const outIndex = readFileSync(resolve(root, 'out/index.html'))
+    if (outIndex) {
+      const listMatch = sw.match(/const PRECACHE_URLS = \[([\s\S]*?)\]/)
+      urls = listMatch ? [...listMatch[1].matchAll(/'([^']+)'/g)].map((m) => m[1]) : []
+      const missing = urls.filter((u) => {
+        const rel = u === '/' ? 'index.html' : u.replace(/^\//, '')
+        try { readFileSync(resolve(root, 'out', rel)); return false } catch { return true }
+      })
+      if (missing.length > 0) {
+        fail(`precached shell file(s) missing from out/: ${missing.join(', ')}`)
+      } else {
+        pass(`all ${urls.length} precached shell files exist in out/`)
+      }
+    }
+  } catch {
+    console.log('  ·  out/ not built — skipping shell file existence check')
+  }
+})
+
 // ── Result ──────────────────────────────────────────────────
 console.log(`\n${'─'.repeat(48)}`)
 console.log(`  ${passed} passed   ${failed} failed`)
