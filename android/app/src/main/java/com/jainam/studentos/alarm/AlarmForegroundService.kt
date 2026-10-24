@@ -4,6 +4,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.animation.ValueAnimator
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -24,6 +25,7 @@ import android.content.pm.ServiceInfo
 import android.speech.tts.TextToSpeech
 import android.util.Log
 import android.annotation.SuppressLint
+import android.view.animation.LinearInterpolator
 import androidx.core.app.NotificationCompat
 import com.jainam.studentos.R
 import java.util.Locale
@@ -46,6 +48,12 @@ class AlarmForegroundService : Service(), AudioManager.OnAudioFocusChangeListene
         const val EXTRA_BODY = "alarm_body"
         const val EXTRA_SOUND = "alarm_sound"
         const val EXTRA_VIBRATION = "alarm_vibration"
+
+        // Ring loudness: the alarm stream is pushed to max while ringing (then
+        // restored) and the player gain ramps up so the phone does not blast at
+        // full volume in the first second.
+        private const val RAMP_START = 0.35f
+        private const val RAMP_MS = 4500L
     }
 
     private var mediaPlayer: MediaPlayer? = null
@@ -62,6 +70,8 @@ class AlarmForegroundService : Service(), AudioManager.OnAudioFocusChangeListene
     private var tts: TextToSpeech? = null
     private var ttsReady = false
     private var pendingTtsText: String? = null
+    private var previousAlarmVolume = -1
+    private var volumeRamp: ValueAnimator? = null
 
     private val actionReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -98,6 +108,15 @@ class AlarmForegroundService : Service(), AudioManager.OnAudioFocusChangeListene
         tts = TextToSpeech(this) { status ->
             if (status == TextToSpeech.SUCCESS) {
                 tts?.language = Locale.US
+                // Speak the alarm title through the alarm stream, not media:
+                // otherwise the announcement is inaudible while the phone is
+                // on silent/media volume 0.
+                tts?.setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_ALARM)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                        .build(),
+                )
                 ttsReady = true
                 pendingTtsText?.let { speakTts(it) }
                 pendingTtsText = null
@@ -217,6 +236,7 @@ class AlarmForegroundService : Service(), AudioManager.OnAudioFocusChangeListene
         isPlaying = true
 
         requestAudioFocus()
+        boostAlarmStream()
         playAlarmAudio()
         if (vibrationEnabled) startVibrating()
         val ttsText = title ?: "Alarm"
@@ -225,6 +245,71 @@ class AlarmForegroundService : Service(), AudioManager.OnAudioFocusChangeListene
         } else {
             pendingTtsText = ttsText
         }
+    }
+
+    /**
+     * Push the ALARM stream to its maximum while this alarm rings. MediaPlayer
+     * gain is capped at 1.0, so without this the ring is only as loud as the
+     * alarm slider happens to be — often a few percent after someone lowered it
+     * for an earlier alarm. The previous index is restored in [stopPlaying].
+     */
+    private fun boostAlarmStream() {
+        val am = audioManager ?: return
+        try {
+            val max = am.getStreamMaxVolume(AudioManager.STREAM_ALARM)
+            val current = am.getStreamVolume(AudioManager.STREAM_ALARM)
+            if (current >= max) return
+            previousAlarmVolume = current
+            am.setStreamVolume(AudioManager.STREAM_ALARM, max, 0)
+            Log.i(TAG, "Raised alarm stream volume $current -> $max")
+        } catch (e: SecurityException) {
+            Log.w(TAG, "Cannot raise alarm volume (policy access missing): ${e.message}")
+        }
+    }
+
+    /** Put the ALARM stream back the way the user left it. */
+    private fun restoreAlarmStream() {
+        val am = audioManager ?: return
+        val previous = previousAlarmVolume
+        if (previous < 0) return
+        previousAlarmVolume = -1
+        try {
+            am.setStreamVolume(AudioManager.STREAM_ALARM, previous, 0)
+            Log.i(TAG, "Restored alarm stream volume to $previous")
+        } catch (e: SecurityException) {
+            Log.w(TAG, "Cannot restore alarm volume: ${e.message}")
+        }
+    }
+
+    /** Ramp the player gain so the alarm fades in instead of starting at a blast. */
+    private fun startVolumeRamp() {
+        val player = mediaPlayer ?: return
+        volumeRamp?.cancel()
+        try {
+            player.setVolume(RAMP_START, RAMP_START)
+        } catch (e: IllegalStateException) {
+            Log.w(TAG, "Cannot set initial ramp volume: ${e.message}")
+            return
+        }
+        val animator = ValueAnimator.ofFloat(RAMP_START, 1f).apply {
+            duration = RAMP_MS
+            interpolator = LinearInterpolator()
+            addUpdateListener { anim ->
+                val gain = anim.animatedValue as Float
+                try {
+                    mediaPlayer?.setVolume(gain, gain)
+                } catch (_: IllegalStateException) {
+                    // Player released mid-ramp; nothing to do.
+                }
+            }
+        }
+        volumeRamp = animator
+        animator.start()
+    }
+
+    private fun cancelVolumeRamp() {
+        volumeRamp?.cancel()
+        volumeRamp = null
     }
 
     private fun requestAudioFocus() {
@@ -257,6 +342,7 @@ class AlarmForegroundService : Service(), AudioManager.OnAudioFocusChangeListene
             }
             AudioManager.AUDIOFOCUS_GAIN -> {
                 Log.i(TAG, "Audio focus gained. Restoring volume.")
+                cancelVolumeRamp()
                 mediaPlayer?.setVolume(1.0f, 1.0f)
             }
         }
@@ -296,6 +382,9 @@ class AlarmForegroundService : Service(), AudioManager.OnAudioFocusChangeListene
             Log.e(TAG, "Failed to play preferred alarm sound: ${e.message}. Attempting fallback...")
             playFallbackAudio()
         }
+        // Covers the bundled sound, the caller-supplied URI and the ringtone
+        // fallbacks: whichever player is alive gets the fade-in.
+        startVolumeRamp()
     }
 
     private fun playFallbackAudio() {
@@ -352,6 +441,7 @@ class AlarmForegroundService : Service(), AudioManager.OnAudioFocusChangeListene
 
     private fun stopPlaying() {
         isPlaying = false
+        cancelVolumeRamp()
         try {
             mediaPlayer?.stop()
             mediaPlayer?.release()
@@ -378,6 +468,7 @@ class AlarmForegroundService : Service(), AudioManager.OnAudioFocusChangeListene
         if (wakeLock?.isHeld == true) {
             wakeLock?.release()
         }
+        restoreAlarmStream()
     }
 
     private fun handleSnooze(minutes: Int) {

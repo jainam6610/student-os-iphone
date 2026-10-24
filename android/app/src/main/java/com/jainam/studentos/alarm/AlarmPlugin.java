@@ -353,6 +353,43 @@ public class AlarmPlugin extends Plugin {
     }
 
     private android.media.MediaPlayer previewPlayer;
+    private android.animation.ValueAnimator previewRamp;
+
+    /**
+     * Fade the preview in from 35% to full gain over 3s — same feel as a real
+     * alarm, which ramps so the first second does not blast.
+     */
+    private void fadeInPreview(android.media.MediaPlayer player) {
+        cancelPreviewRamp();
+        try {
+            player.setVolume(0.35f, 0.35f);
+        } catch (IllegalStateException e) {
+            return;
+        }
+        android.animation.ValueAnimator animator =
+            android.animation.ValueAnimator.ofFloat(0.35f, 1f);
+        animator.setDuration(3000L);
+        animator.setInterpolator(new android.view.animation.LinearInterpolator());
+        animator.addUpdateListener(a -> {
+            android.media.MediaPlayer p = previewPlayer;
+            if (p == null) return;
+            try {
+                float gain = (float) a.getAnimatedValue();
+                p.setVolume(gain, gain);
+            } catch (IllegalStateException ignored) {
+                // Player released mid-ramp.
+            }
+        });
+        previewRamp = animator;
+        animator.start();
+    }
+
+    private void cancelPreviewRamp() {
+        if (previewRamp != null) {
+            previewRamp.cancel();
+            previewRamp = null;
+        }
+    }
 
     @PluginMethod
     public void previewAlarm(PluginCall call) {
@@ -391,11 +428,12 @@ public class AlarmPlugin extends Plugin {
 
             previewPlayer.prepare();
             previewPlayer.start();
-            
-            // Stop preview automatically after 5 seconds
+            fadeInPreview(previewPlayer);
+
+            // Stop preview automatically after 6 seconds — one full tone loop.
             new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
                 stopPreview(null);
-            }, 5000);
+            }, 6000);
 
             JSObject result = new JSObject();
             result.put("success", true);
@@ -431,6 +469,7 @@ public class AlarmPlugin extends Plugin {
 
     @PluginMethod
     public void stopPreview(PluginCall call) {
+        cancelPreviewRamp();
         try {
             if (previewPlayer != null) {
                 if (previewPlayer.isPlaying()) {
@@ -452,6 +491,7 @@ public class AlarmPlugin extends Plugin {
 
     @Override
     protected void handleOnDestroy() {
+        cancelPreviewRamp();
         instance = null;
         activeAlarmData = null;
         super.handleOnDestroy();
