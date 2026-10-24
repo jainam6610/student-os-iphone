@@ -311,6 +311,20 @@ export function migrateStoreState(persistedState: unknown, version: number): any
           // current lists untouched — the 24/7 box can move apps to session-only.
           if (!Array.isArray(state.sessionBlockedApps)) state.sessionBlockedApps = []
         }
+        if (version < 28) {
+          // v28: every filter that reads accessibility *content* is OFF by default.
+          // Shorts / Reels / adult-website / YouTube Study Mode are the only rules
+          // that inspect the view tree (node text, content descriptions, view IDs,
+          // on-screen bounds) to detect a fragment player or an address bar. That is
+          // content inspection, not package/class matching, so it needs an explicit
+          // opt-in. They used to default ON (or arrive ON from older builds), which
+          // meant every install inspected screens without consent.
+          state.blockShorts = false
+          state.blockReels = false
+          state.blockAdultWebsites = false
+          state.youtubeStudyMode = false
+          if (typeof state.shortFormAllowance !== 'number') state.shortFormAllowance = 1
+        }
 
         return state
 }

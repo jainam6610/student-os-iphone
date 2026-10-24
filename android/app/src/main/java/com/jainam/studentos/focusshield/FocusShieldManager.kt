@@ -130,6 +130,12 @@ class FocusShieldManager(context: Context) {
     private var checkInPollerJob: Job? = null
     private var breakPollerJob: Job? = null
     private var reconnectJob: Job? = null
+    /** In-flight DataStore/Room rehydration. Start requests wait for it (fix C). */
+    private var restoreJob: Job? = null
+    @Volatile
+    private var restoreCompleted = false
+    /** Bumped by every startSession() so an in-flight restore cannot clobber it. */
+    private val startGeneration = java.util.concurrent.atomic.AtomicLong(0)
     private var sessionCompletionListenerRegistered = false
     private var sessionStateObserverActive = false
     private var categoryObserverActive = false
@@ -306,10 +312,23 @@ class FocusShieldManager(context: Context) {
     }
 
     private fun restoreNativeState() {
-        scope.launch(Dispatchers.IO) {
+        if (restoreJob?.isActive == true) {
+            Log.i(TAG, "restoreNativeState() — already running, not starting a second restore")
+            return
+        }
+        // A start request that lands while this restore is in flight must win:
+        // restoring afterwards used to overwrite the fresh session's mode and
+        // allowlistReadiness with the stale persisted values (fix C).
+        val generationAtStart = startGeneration.get()
+        restoreJob = scope.launch(Dispatchers.IO) {
             try {
                 Log.i(TAG, "restoreNativeState() — rehydrating from DataStore + Room DB")
                 focusSessionManager.restoreSessionState()
+
+                if (startGeneration.get() != generationAtStart) {
+                    Log.i(TAG, "restoreNativeState() — session started during restore, keeping the new session's state")
+                    return@launch
+                }
 
                 // Restore the blocking mode too. Without this a cold start (process
                 // death / reboot) silently downgraded STRICT and BREAK sessions to
@@ -390,8 +409,7 @@ class FocusShieldManager(context: Context) {
                     // BLOCKLIST and BREAK sessions arm from the user's blocklist
                     // alone, so an empty allowlist must not disable them after a
                     // cold start. (This used to require allowedCount > 0.)
-                    val needsAllowlist = BlockingRules.requiresAllowlist(restoredMode)
-                    val effectivelyReady = !needsAllowlist || allowedCount > 0
+                    val effectivelyReady = BlockingRules.restoredArms(restoredMode, allowedCount)
 
                     blockingEngine.setAllowlistReady(effectivelyReady)
 
@@ -428,7 +446,24 @@ class FocusShieldManager(context: Context) {
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "restoreNativeState() — error during rehydration", e)
+            } finally {
+                restoreCompleted = true
+                Log.i(TAG, "restoreNativeState() — ready (restoreCompleted=true)")
             }
+        }
+    }
+
+    /**
+     * Blocks a start request until the cold-start restore has finished, so the
+     * restore's mode/filter/allowlist writes can never land *after* the new
+     * session armed (fix C). Bounded: a wedged restore must not hang a start.
+     */
+    private suspend fun awaitRestoreReady() {
+        val job = restoreJob ?: return
+        if (restoreCompleted) return
+        val finished = withTimeoutOrNull(2_000) { job.join() }
+        if (finished == null) {
+            Log.w(TAG, "awaitRestoreReady() — restore still running after 2s, arming anyway")
         }
     }
 
@@ -454,7 +489,8 @@ class FocusShieldManager(context: Context) {
     ) {
         Log.i(TAG, "startSession() duration=${durationMinutes}min mode=$mode whitelistSize=${whitelist.size} strict=$strict breakBlocked=${breakBlockedPackages.size}")
 
-        focusSessionManager.startSession(durationMinutes, strict)
+        // Any session started from now on outranks an in-flight restore.
+        startGeneration.incrementAndGet()
 
         // Resolve + apply the mode BEFORE anything can bail out. It used to be
         // applied only at the end, so a fail-safe return left the engine on the
@@ -465,17 +501,25 @@ class FocusShieldManager(context: Context) {
             strict -> BlockingMode.STRICT
             else -> BlockingMode.STANDARD
         }
-        blockingEngine.setBlockingMode(mappedMode)
         val needsAllowlist = BlockingRules.requiresAllowlist(mappedMode)
 
         scope.launch {
+            // Fix (C): never arm on top of a half-finished rehydration — it used
+            // to write the old persisted mode/allowlist right after we armed.
+            awaitRestoreReady()
+
+            focusSessionManager.startSession(durationMinutes, strict)
+            blockingEngine.setBlockingMode(mappedMode)
+
             var listsOk = true
+            var mergedCount = 0
             try {
                 val existingAllowed = appCategoryDao.getAllCategories()
                     .filter { it.categoryType == CategoryType.USER_ALLOWED }
                 val existingPkgs = existingAllowed.map { it.packageName }.toSet()
                 // Union: JS whitelist is authoritative, but never wipe native-only entries
                 val mergedPkgs = existingPkgs + whitelist
+                mergedCount = mergedPkgs.size
                 if (mergedPkgs.isEmpty() && needsAllowlist) {
                     listsOk = false
                     Log.w(TAG, "startSession() STRICT mode with an EMPTY allowlist — not arming blocking (fail-safe)")
@@ -541,7 +585,7 @@ class FocusShieldManager(context: Context) {
             // BLOCKLIST mode works from the user's blocklist alone: an empty
             // allowlist is the normal state on a fresh install. Only whitelist
             // (STRICT) mode is unsafe without a non-empty allowlist.
-            val ready = !needsAllowlist || listsOk
+            val ready = BlockingRules.startArms(mappedMode, mergedCount, listsOk)
             blockingEngine.setAllowlistReady(ready)
             if (!ready) {
                 isDetectorActive.set(false)

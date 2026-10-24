@@ -27,6 +27,26 @@ object BlockingRules {
     fun requiresAllowlist(mode: BlockingMode): Boolean = mode == BlockingMode.STRICT
 
     /**
+     * Should a start (or restored) session actually arm enforcement?
+     *
+     * @param mode effective blocking mode for the session
+     * @param allowlistCount packages currently on the user's allowlist
+     * @param listWriteOk false when persisting the list failed
+     *
+     * Blocklist (STANDARD) and BREAK sessions arm from the blocklist alone, so an
+     * empty allowlist is the normal fresh-install state and must still arm.
+     * Whitelist (STRICT) sessions block everything that is not allowed, so an
+     * empty *or unpersisted* allowlist must NOT arm — that would block the whole
+     * phone.
+     */
+    fun startArms(mode: BlockingMode, allowlistCount: Int, listWriteOk: Boolean): Boolean =
+        !requiresAllowlist(mode) || (listWriteOk && allowlistCount > 0)
+
+    /** Same rule applied to a session restored from DataStore after a cold start. */
+    fun restoredArms(mode: BlockingMode, allowedCount: Int): Boolean =
+        startArms(mode, allowedCount, listWriteOk = true)
+
+    /**
      * @param category row from `app_categories`, or null when the package has no
      *   row at all (e.g. freshly installed app that was never scanned).
      */

@@ -82,3 +82,20 @@ test('v17 syllabus subjects migrate topics into chapters', () => {
   const migrated = migrateStoreState(structuredClone(fixtures[2].state), 17)
   assert.equal(migrated.syllabus.subjects[0].chapters[0].topics[0].id, 'limits')
 })
+
+test('v28 turns the screen-reading content filters off', () => {
+  // Shorts/Reels/adult/study-mode inspect the accessibility view tree (text,
+  // content descriptions, view IDs, bounds). v28 opts every install out.
+  const migrated = migrateStoreState(
+    { blockShorts: true, blockReels: true, blockAdultWebsites: true, youtubeStudyMode: true },
+    27,
+  )
+  assert.equal(migrated.blockShorts, false)
+  assert.equal(migrated.blockReels, false)
+  assert.equal(migrated.blockAdultWebsites, false)
+  assert.equal(migrated.youtubeStudyMode, false)
+
+  // Whole-app lists are untouched by that migration.
+  const withBlocks = migrateStoreState({ blockShorts: true, alwaysBlockedApps: ['com.google.android.youtube'] }, 27)
+  assert.deepEqual(withBlocks.alwaysBlockedApps, ['com.google.android.youtube'])
+})

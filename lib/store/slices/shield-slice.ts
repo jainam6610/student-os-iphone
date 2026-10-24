@@ -139,16 +139,19 @@ export const createShieldSlice = (set: any, _get?: any, _api?: any): ShieldSlice
   setDeepLockOnboardingComplete: (complete) => set({ deepLockOnboardingComplete: complete }),
   autoDnd: false,
   setAutoDnd: (enabled) => set({ autoDnd: enabled }),
-  // Policy: whole-app blocking is opt-in — the lists start empty and nothing is
-  // rejected unless the user picks it. Short-form surfaces (Shorts/Reels) are the
-  // exception: they are on by default because they are the distraction the app
-  // exists to stop, they only apply while a session runs, and blocking a surface
-  // never rejects an app. Existing users keep whatever they already persisted.
+  // Whole-app blocking is opt-in — the lists start empty and nothing is
+  // rejected unless the user picks it.
+  //
+  // v28: Shorts/Reels are OFF by default too. Unlike every other rule these two
+  // read the accessibility view tree (node text, content descriptions, view IDs,
+  // on-screen bounds) because the player is a fragment inside the host activity.
+  // That is content inspection, so it needs an explicit opt-in; turning it on by
+  // default meant every install inspected screens without consent.
   breakBlockingEnabled: true,
   setBreakBlockingEnabled: (enabled) => set({ breakBlockingEnabled: enabled }),
-  blockShorts: true,
+  blockShorts: false,
   setBlockShorts: (enabled) => set({ blockShorts: enabled }),
-  blockReels: true,
+  blockReels: false,
   setBlockReels: (enabled) => set({ blockReels: enabled }),
   // Opt-in like whole-app blocking: a new filter must never silently start
   // rejecting content for an existing user. Only surfaces (not whole apps) are

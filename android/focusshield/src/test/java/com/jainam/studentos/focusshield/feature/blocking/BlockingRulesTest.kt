@@ -79,4 +79,32 @@ class BlockingRulesTest {
         assertFalse(BlockingRules.shouldBlock(BlockingMode.STANDARD, null))
         assertFalse(BlockingRules.shouldBlock(BlockingMode.STANDARD, CategoryType.UNCATEGORIZED))
     }
+
+    // ── Arming policy (fix B/C) ─────────────────────────────────────────────
+    // A session must arm in blocklist mode with an empty allowlist, and must NOT
+    // arm in strict mode without one (that would block the whole phone).
+
+    @Test
+    fun blocklistSessionArmsWithAnEmptyAllowlist() {
+        assertTrue(BlockingRules.startArms(BlockingMode.STANDARD, allowlistCount = 0, listWriteOk = true))
+        assertTrue(BlockingRules.startArms(BlockingMode.BREAK, allowlistCount = 0, listWriteOk = true))
+        assertTrue(BlockingRules.startArms(BlockingMode.STANDARD, allowlistCount = 0, listWriteOk = false))
+    }
+
+    @Test
+    fun strictSessionDoesNotArmWithoutAnAllowlist() {
+        assertFalse(BlockingRules.startArms(BlockingMode.STRICT, allowlistCount = 0, listWriteOk = true))
+        assertFalse(BlockingRules.startArms(BlockingMode.STRICT, allowlistCount = 3, listWriteOk = false))
+        assertTrue(BlockingRules.startArms(BlockingMode.STRICT, allowlistCount = 3, listWriteOk = true))
+    }
+
+    @Test
+    fun restoredSessionFollowsTheSameArmingRule() {
+        // Cold start: STANDARD + no allowlist must still arm (was the "Deep Lock
+        // does nothing after a reboot" bug); STRICT must stay disarmed.
+        assertTrue(BlockingRules.restoredArms(BlockingMode.STANDARD, allowedCount = 0))
+        assertTrue(BlockingRules.restoredArms(BlockingMode.BREAK, allowedCount = 0))
+        assertFalse(BlockingRules.restoredArms(BlockingMode.STRICT, allowedCount = 0))
+        assertTrue(BlockingRules.restoredArms(BlockingMode.STRICT, allowedCount = 2))
+    }
 }

@@ -39,8 +39,6 @@ export function DeepLockOnboarding({ onClose }: Props) {
   const sessionBlockedApps = useStore((s) => s.sessionBlockedApps)
   const whitelistedApps = useStore((s) => s.whitelistedApps)
   const removeWhitelistedApp = useStore((s) => s.removeWhitelistedApp)
-  const setBlockShorts = useStore((s) => s.setBlockShorts)
-  const setBlockReels = useStore((s) => s.setBlockReels)
   const setDeepLockOnboardingComplete = useStore((s) => s.setDeepLockOnboardingComplete)
 
   const [page, setPage] = useState<1 | 2>(1)
@@ -133,10 +131,10 @@ export function DeepLockOnboarding({ onClose }: Props) {
       for (const pkg of selected) {
         if (whitelistedApps.includes(pkg)) removeWhitelistedApp(pkg)
       }
-      // Short-form surfaces (Shorts/Reels) are the distraction this app exists
-      // to stop, so turn them on as part of setup.
-      setBlockShorts(true)
-      setBlockReels(true)
+      // Deliberately NOT enabling Shorts/Reels here. Those two filters inspect
+      // the accessibility view tree (node text, content descriptions, view IDs,
+      // bounds) rather than just package + class name, so they are opt-in only —
+      // setup must never switch content inspection on for the user.
       const result = await syncShieldSettingsToNative()
       setDeepLockOnboardingComplete(true)
       showToast({
@@ -144,8 +142,8 @@ export function DeepLockOnboarding({ onClose }: Props) {
         title: 'Deep Lock is ready',
         description: result.serviceRunning
           ? merged.length > 0
-            ? `${merged.length} app${merged.length === 1 ? '' : 's'} will lock during focus sessions · Shorts & Reels blocked everywhere. Need them gone all day? Add them under 24/7 in Deep Lock.`
-            : 'Shorts & Reels are blocked everywhere. Add apps any time under App Blocking in Deep Lock.'
+            ? `${merged.length} app${merged.length === 1 ? '' : 's'} will lock during focus sessions. Shorts/Reels filters stay off until you turn them on in Deep Lock.`
+            : 'Session blocking is ready. Add apps any time under App Blocking; the Shorts/Reels filters stay off until you enable them.'
           : 'Settings saved. Enable the accessibility service so Deep Lock can enforce them.',
       })
       onClose()
@@ -156,7 +154,7 @@ export function DeepLockOnboarding({ onClose }: Props) {
     }
   }, [
     saving, sessionBlockedApps, whitelistedApps, removeWhitelistedApp, selected,
-    setBlockShorts, setBlockReels, setDeepLockOnboardingComplete, showToast, onClose,
+    setDeepLockOnboardingComplete, showToast, onClose,
   ])
 
   const statusRow = (
