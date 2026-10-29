@@ -28,7 +28,7 @@ export const metadata: Metadata = {
   title: 'Student OS - Your Ultimate Study Companion',
   description: 'An all-in-one study tracker, deep work timer, planner, and productivity dashboard designed for ambitious students. Built thoughtfully by Jainam Karnawat.',
   generator: 'Student OS',
-  manifest: '/manifest.json',
+  manifest: `${BASE_PATH}/manifest.json`,
   keywords: ['study', 'productivity', 'focus', 'timer', 'planner', 'student', 'education', 'pomodoro', 'habits', 'analytics'],
   authors: [{ name: 'Jainam Karnawat', url: 'https://instagram.com/thats.jainam' }],
   creator: 'Jainam Karnawat',
@@ -45,11 +45,11 @@ export const metadata: Metadata = {
   },
   icons: {
     icon: [
-      { url: '/icon-light-32x32.png', media: '(prefers-color-scheme: light)' },
-      { url: '/icon-dark-32x32.png', media: '(prefers-color-scheme: dark)' },
-      { url: '/icon.svg', type: 'image/svg+xml' },
+      { url: `${BASE_PATH}/icon-light-32x32.png`, media: '(prefers-color-scheme: light)' },
+      { url: `${BASE_PATH}/icon-dark-32x32.png`, media: '(prefers-color-scheme: dark)' },
+      { url: `${BASE_PATH}/icon.svg`, type: 'image/svg+xml' },
     ],
-    apple: [{ url: '/apple-icon.png', sizes: '180x180', type: 'image/png' }],
+    apple: [{ url: `${BASE_PATH}/apple-icon.png`, sizes: '180x180', type: 'image/png' }],
   },
   openGraph: {
     type: 'website',
