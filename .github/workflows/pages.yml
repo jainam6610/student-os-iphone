@@ -54,6 +54,12 @@ jobs:
         env:
           GITHUB_PAGES_REPO: ${{ github.event.repository.name }}
 
+      - name: Fix service worker for GitHub Pages basePath
+        if: env.GITHUB_PAGES_REPO != ''
+        run: node scripts/make-sw.mjs
+        env:
+          GITHUB_PAGES_REPO: ${{ github.event.repository.name }}
+
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
