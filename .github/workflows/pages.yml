@@ -1,0 +1,72 @@
+# ─────────────────────────────────────────────────────────────
+#  Deploy Student OS (iPhone PWA fork) to GitHub Pages
+#
+#  Trigger: push to iphone-pwa branch, or manual dispatch.
+#  Requires: repo Settings → Pages → Source: "GitHub Actions"
+# ─────────────────────────────────────────────────────────────
+
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [iphone-pwa]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      # Must match the repo name exactly (case-sensitive)
+      GITHUB_PAGES_REPO: ${{ github.event.repository.name }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11
+          run_install: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      - name: Fix manifest for GitHub Pages basePath
+        if: env.GITHUB_PAGES_REPO != ''
+        run: node scripts/make-manifest.mjs
+        env:
+          GITHUB_PAGES_REPO: ${{ github.event.repository.name }}
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: out
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

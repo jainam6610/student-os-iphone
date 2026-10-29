@@ -148,7 +148,8 @@ check('Service worker version consistency', () => {
   const layout = readFileSync(resolve(root, 'app/layout.tsx'), 'utf8')
 
   const [, swVersion] = sw.match(/SW_VERSION\s*=\s*(\d+)/) ?? []
-  const [, regVersion] = layout.match(/serviceWorker\.register\('\/sw\.js\?v=(\d+)'\)/) ?? []
+  // Accept both absolute '/sw.js?v=N' and relative 'sw.js?v=N' (for GitHub Pages basePath)
+  const [, regVersion] = layout.match(/serviceWorker\.register\(['"]\/?sw\.js\?v=(\d+)['"]\)/) ?? []
 
   if (!swVersion) {
     fail('public/sw.js is missing SW_VERSION')
