@@ -8,6 +8,8 @@ import { Card } from '@/components/ui/glass-card'
 import { WhitelistEditor } from './WhitelistEditor'
 import { AppBlockerSection } from './AppBlockerSection'
 import { DeepLockOnboarding } from './DeepLockOnboarding'
+import { FocusShieldUnavailable } from './FocusShieldUnavailable'
+import { canUseFocusShield } from '@/lib/platform'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/components/ui/toast'
 import { Sparkles, Plus, X } from 'lucide-react'
@@ -419,6 +421,10 @@ export function DeepLockDashboard() {
 
   const protectionColor = protectionLevel === 'excellent' ? 'text-green-400' : protectionLevel === 'good' ? 'text-amber-400' : 'text-red-400'
   const protectionBg = protectionLevel === 'excellent' ? 'bg-green-500/10' : protectionLevel === 'good' ? 'bg-amber-500/10' : 'bg-red-500/10'
+
+  // Reachable through a shared ?view=deep-lock link even where the tab is
+  // hidden — never render a dashboard whose actions cannot work.
+  if (!canUseFocusShield()) return <FocusShieldUnavailable />
 
   return (
     <motion.div

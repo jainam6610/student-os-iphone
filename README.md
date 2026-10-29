@@ -28,8 +28,11 @@ Focus timer · Tasks · Habits · Planner · Analytics · Deep Lock — in one p
 | Platform | How to install |
 |----------|----------------|
 | **Android** | [**Google Play**](https://play.google.com/store/apps/details?id=com.jainam.studentos) (recommended) · or download the [**latest APK**](https://github.com/jainam6610/student-os/releases/latest) from the Releases page |
+| **iPhone / iPad** | Open the app link **in Safari**, tap **Share → Add to Home Screen**. See [docs/IPHONE_PWA.md](./docs/IPHONE_PWA.md) |
 | **Web / Desktop** | It's a PWA — open the app in a browser and choose *"Add to Home Screen"* / *"Install"* to use it offline |
 | **Build from source** | See [Getting Started](#getting-started) below |
+
+> On iPhone, app blocking (Deep Lock) is unavailable and background reminders are delivered through the **Calendar export** — see [docs/IPHONE_PWA.md](./docs/IPHONE_PWA.md).
 
 > The APK on the Releases page is a **debug build** intended for sideloading and testing. For everyday use, install from Google Play.
 

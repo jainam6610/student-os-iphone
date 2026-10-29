@@ -13,11 +13,15 @@ import {
   Instagram, User, ChevronRight, RotateCcw, Brain, BookOpen, Star, Eye, Zap, BellRing, X, Music, Coffee,
   Disc3, Volume2, Repeat, Type, Palette, Layout, Shield, Settings2, ChevronDown, Bell,
   Calendar, AlarmClock, Activity, Palette as PaletteIcon, FileText, Info, Terminal,
-  Plus, Check, Music2, ListChecks, AlertTriangle, GraduationCap, RefreshCw,
+  Plus, Check, Music2, ListChecks, AlertTriangle, GraduationCap, RefreshCw, Smartphone,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { ProfileAvatar } from './profile-avatar'
 import { WhitelistEditor } from './deep-lock/WhitelistEditor'
+import { FocusShieldUnavailable } from './deep-lock/FocusShieldUnavailable'
+import { canUseFocusShield, isIOS, isStandalone, canScheduleAlarms } from '@/lib/platform'
+import { openIOSInstallGuide } from './ios-install-prompt'
+import { ShareAppCard } from './share-app-card'
 import { AVATAR_CATEGORIES } from './ui/avatars'
 import {
    getNotificationPermission,
@@ -36,6 +40,7 @@ import {
  import { importAudioFiles, deleteTrack, renameTrack, getTracksMeta, MAX_TRACKS, type AmbientTrack } from '@/lib/ambient-db'
  import { clearAmbientTracks } from '@/lib/ambient-db'
  import { deepLockPlugin } from '@/lib/deep-lock/plugin'
+import { buildCalendar, exportCalendarFile, hasExportableReminders } from '@/lib/ics'
  import { useAmbientAudio } from '@/lib/useAmbientAudio'
 
 const GOAL_PRESETS = [
@@ -138,6 +143,8 @@ export function Settings() {
   const setShowExamCountdownOnStartup = useStore((s) => s.setShowExamCountdownOnStartup)
   const plannerSettings = useStore((s) => s.plannerSettings)
   const setPlannerSettings = useStore((s) => s.setPlannerSettings)
+  const habits = useStore((s) => s.habits)
+  const studyEvents = useStore((s) => s.events)
   const ambientSoundEnabled = useStore((s) => s.ambientSoundEnabled)
   const setAmbientSoundEnabled = useStore((s) => s.setAmbientSoundEnabled)
   const setActiveView = useStore((s) => s.setActiveView)
@@ -192,6 +199,44 @@ export function Settings() {
       document.body.classList.remove('scroll-locked')
     }
   }, [anyModalOpen])
+
+  const handleExportCalendar = async () => {
+    try {
+      const ics = buildCalendar({
+        habits,
+        events: studyEvents,
+        defaultReminderMinutes: plannerSettings.defaultReminderMinutes,
+      })
+
+      const hasAlarms = hasExportableReminders({ habits, events: studyEvents })
+      if (!hasAlarms) {
+        showToast({
+          type: 'info',
+          title: 'Nothing to export yet',
+          description: 'Turn on a habit reminder or add a planner event first.',
+        })
+        return
+      }
+
+      const fileName = `student-os-reminders-${new Date().toISOString().split('T')[0]}.ics`
+      const result = await exportCalendarFile(fileName, ics)
+      showToast({
+        type: 'success',
+        title: result === 'shared' ? 'Calendar ready' : 'Reminders exported',
+        description:
+          result === 'shared'
+            ? 'Pick Calendar in the share sheet to add the alarms.'
+            : 'Open the file to add the alarms to your calendar.',
+      })
+    } catch (error) {
+      console.warn('Calendar export failed:', error)
+      showToast({
+        type: 'error',
+        title: 'Could not export reminders',
+        description: 'Try again, or add the events to your calendar manually.',
+      })
+    }
+  }
 
   const handleExport = async () => {
     try {
@@ -409,6 +454,7 @@ export function Settings() {
       </SettingsSection>
 
       {/* ─── FOCUS SHIELD ────────────────────────────────── */}
+      {canUseFocusShield() ? (
       <SettingsSection title="Focus Shield" icon={Shield} defaultOpen>
         <Card className="p-4 space-y-3">
           <div className="flex items-center justify-between">
@@ -448,6 +494,13 @@ export function Settings() {
           )}
         </Card>
       </SettingsSection>
+      ) : (
+      <SettingsSection title="Focus Shield" icon={Shield}>
+        <Card className="p-4">
+          <FocusShieldUnavailable compact />
+        </Card>
+      </SettingsSection>
+      )}
 
       {/* ─── PLANNER ─────────────────────────────────────── */}
       <SettingsSection title="Planner" icon={Calendar}>
@@ -641,6 +694,37 @@ export function Settings() {
       {/* ─── AMBIENT SOUND ─────────────────────────────────── */}
       <AmbientSoundSection />
 
+      {/* ─── IPHONE / REMINDERS (web) ─────────────────────── */}
+      {/* Safari has no scheduled-notification API, so in the iPhone home-screen
+          app reminders can only reach the user through the calendar. Show the
+          export prominently instead of letting alarms silently never fire. */}
+      {!canScheduleAlarms() && (
+        <SettingsSection title={isIOS() ? 'iPhone' : 'Reminders'} icon={isIOS() ? Smartphone : Bell}>
+          <Card className="p-0 overflow-hidden">
+            {isIOS() && (
+              <SettingRow
+                icon={<Plus className="w-4 h-4" />}
+                title="Add to Home Screen"
+                description="Step-by-step Safari install guide"
+                onClick={() => openIOSInstallGuide()}
+              />
+            )}
+            <SettingRow
+              icon={<Calendar className="w-4 h-4" />}
+              title="Add reminders to Calendar"
+              description="Alarms that work when this app is closed"
+              onClick={() => void handleExportCalendar()}
+              isLast
+            />
+          </Card>
+          <p className="mt-2 px-1 text-[11px] leading-relaxed text-muted-foreground">
+            Exports your routine reminders and study blocks as a calendar file. iPhone adds them to
+            <span className="text-foreground/80"> Calendar</span>, which can ring even when Student OS
+            is closed{isIOS() ? ' — Safari does not let a home-screen app schedule background notifications' : ''}.
+          </p>
+        </SettingsSection>
+      )}
+
       {/* ─── DATA ────────────────────────────────────────── */}
       <SettingsSection title="Data" icon={Download}>
         <Card className="p-0 overflow-hidden">
@@ -659,6 +743,11 @@ export function Settings() {
           database, so re-import them after restoring a backup on another device.
         </p>
       </SettingsSection>
+
+      {/* ─── SHARE ───────────────────────────────────────── */}
+      <motion.div variants={staggerItem}>
+        <ShareAppCard />
+      </motion.div>
 
       {/* ─── CREATOR / ABOUT ─────────────────────────────── */}
       <motion.div variants={staggerItem}>

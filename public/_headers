@@ -30,6 +30,12 @@
 /apple-icon.png
   Cache-Control: public, max-age=31536000, immutable
 
+# iOS launch screens + install QR: content-stable, cache forever
+/splash/*
+  Cache-Control: public, max-age=31536000, immutable
+/install-qr.*
+  Cache-Control: public, max-age=31536000, immutable
+
 # Manifest: short cache (updates with deploy)
 /manifest.json
   Cache-Control: public, max-age=0, must-revalidate

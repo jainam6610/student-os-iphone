@@ -9,7 +9,7 @@
 // INCREMENT ON EVERY DEPLOY to force cache invalidation.
 // Must match the `?v=` query in the registration URL (app/layout.tsx).
 // scripts/verify-release.mjs fails the build if the two drift apart (R9).
-const SW_VERSION = 10
+const SW_VERSION = 11
 const CACHE_PREFIX = `os-v${SW_VERSION}-`
 
 const CACHES = {

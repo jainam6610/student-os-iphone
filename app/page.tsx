@@ -10,6 +10,7 @@ import { Loader } from '@/components/loader'
 import { Footer } from '@/components/footer'
 import { ToastProvider } from '@/components/ui/toast'
 import { InstallPrompt } from '@/components/install-prompt'
+import { IOSInstallPrompt } from '@/components/ios-install-prompt'
 import { WelcomeScreen } from '@/components/welcome-screen'
 import { StorageMonitor } from '@/components/storage-monitor'
 import { HomeErrorBoundary } from '@/components/home-error-boundary'
@@ -161,6 +162,14 @@ export default function StudentOS() {
     setMounted(true)
     const wasOnboarded = checkOnboardingComplete()
     setShowIntro(wasOnboarded)
+
+    // `sidebarOpen` defaults to true so the desktop rail starts expanded. On a
+    // phone that same flag opens the navigation drawer over the dashboard, so
+    // the first thing an iPhone user sees is a full-screen menu. Start it
+    // closed wherever the sidebar is an overlay instead of a column.
+    if (window.matchMedia('(max-width: 1023px)').matches) {
+      useStore.getState().setSidebarOpen(false)
+    }
   }, [])
 
   // Push the persisted Focus Shield settings (block lists + content filters)
@@ -399,6 +408,7 @@ export default function StudentOS() {
           <ChunkErrorBoundary>
           <ToastProvider>
             <InstallPrompt />
+            <IOSInstallPrompt />
             <MobileSidebar open={sidebarOpen} onOpenChange={setSidebarOpen} />
             <FocusShieldSetup />
             <AccessibilityDisclosure />

@@ -1,6 +1,6 @@
 'use client'
 
-import { memo, useEffect, useCallback, useRef } from 'react'
+import { memo, useEffect, useCallback, useMemo, useRef } from 'react'
 import { motion } from 'framer-motion'
 import { useStore } from '@/lib/store'
 import {
@@ -19,6 +19,7 @@ import {
   Search,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { canUseFocusShield } from '@/lib/platform'
 import { spring } from './motion'
 import { ProfileAvatar } from './profile-avatar'
 
@@ -31,6 +32,18 @@ const navItems = [
   { id: 'analytics', label: 'Trends', icon: BarChart3 },
   { id: 'settings', label: 'Settings', icon: Settings },
 ] as const
+
+/**
+ * Deep Lock (Focus Shield) relies on Android's Accessibility + Usage Access
+ * services. Everywhere else — iOS, desktop, any browser — the tab is hidden so
+ * it never leads to a screen where every action fails.
+ */
+function useVisibleNavItems() {
+  return useMemo(
+    () => navItems.filter((item) => item.id !== 'deep-lock' || canUseFocusShield()),
+    [],
+  )
+}
 
 const PARENT_VIEW: Record<string, string> = {
   dashboard: 'dashboard',
@@ -86,6 +99,7 @@ function SidebarContent({ isMobile, onNavClick, forceExpanded, hideHeader }: Sid
   })
 
   const sidebarOpen = forceExpanded ?? storeSidebarOpen
+  const visibleNavItems = useVisibleNavItems()
 
   const handleNav = (id: string) => {
     setActiveView(id as typeof activeView)
@@ -133,7 +147,7 @@ function SidebarContent({ isMobile, onNavClick, forceExpanded, hideHeader }: Sid
 
         <nav className="flex-1 py-2 overflow-y-auto no-scrollbar" aria-label="Main menu">
           <ul className={cn('space-y-0.5', sidebarOpen ? 'px-2' : 'px-1.5')} role="list">
-            {navItems.map((item, i) => (
+            {visibleNavItems.map((item, i) => (
               <NavButton
                 key={item.id}
                 item={item}
@@ -421,12 +435,13 @@ export const MobileSidebar = memo(function MobileSidebar({ open, onOpenChange }:
 export const MobileNav = memo(function MobileNav() {
   const activeView = useStore((s) => s.activeView)
   const setActiveView = useStore((s) => s.setActiveView)
+  const visibleNavItems = useVisibleNavItems()
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-mobile-nav lg:hidden mobile-bottom-nav" aria-label="Mobile navigation">
       <div className="bg-card/95 backdrop-blur-sm border-t border-border shadow-2xl nav-safe-bottom">
         <div className="flex max-w-xl mx-auto w-full" role="list">
-          {navItems.map((item) => {
+          {visibleNavItems.map((item) => {
             const isActive = activeView === item.id || PARENT_VIEW[activeView] === item.id
             const Icon = item.icon
             return (

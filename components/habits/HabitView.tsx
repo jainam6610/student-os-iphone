@@ -14,8 +14,9 @@ import { staggerContainer, staggerItem, spring } from '@/components/motion'
 import { useToast } from '@/components/ui/toast'
 import { cn } from '@/lib/utils'
 import { subMonths, addMonths } from 'date-fns'
-import { Activity, Plus, PlusCircle, ChevronRight, CalendarDays, BarChart3, AlertTriangle, Brain, Calendar, List } from 'lucide-react'
+import { Activity, Plus, PlusCircle, ChevronRight, CalendarDays, BarChart3, AlertTriangle, Brain, Calendar, List, Bell } from 'lucide-react'
 import Alarm, { type AlarmEventData } from '@/lib/plugins/alarm-plugin'
+import { canScheduleAlarms, isIOS } from '@/lib/platform'
 
 const ALARM_CLEARED_EVENT = 'student-os:alarm-cleared'
 
@@ -204,6 +205,25 @@ export function HabitView() {
           </button>
         </div>
       </motion.div>
+
+      {/* Reminder nudge — only where the browser cannot fire background alarms */}
+      {!canScheduleAlarms() && habits.some((h) => h.reminder?.enabled) && (
+        <motion.button
+          variants={staggerItem}
+          onClick={() => useStore.getState().setActiveView('settings')}
+          className="glass-panel flex w-full items-start gap-3 rounded-xl p-3.5 text-left transition-colors hover:border-primary/30"
+        >
+          <Bell className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+          <span className="min-w-0 flex-1">
+            <span className="block text-xs font-medium text-on-surface">Reminders need your calendar</span>
+            <span className="mt-0.5 block text-[11px] leading-relaxed text-on-surface-variant">
+              This browser cannot schedule background alarms. Export your routine reminders in
+              Settings → {isIOS() ? 'iPhone' : 'Reminders'} and let Calendar ring for you.
+            </span>
+          </span>
+          <ChevronRight className="mt-0.5 h-3.5 w-3.5 shrink-0 text-on-surface-variant" />
+        </motion.button>
+      )}
 
       {/* Stats */}
       <HabitStats
