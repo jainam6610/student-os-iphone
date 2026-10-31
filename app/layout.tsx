@@ -122,8 +122,8 @@ export default function RootLayout({
 {`if ('serviceWorker' in navigator) {
   window.addEventListener('load', function() {
     // Relative URL so <base href="/repo/"> applies on GitHub Pages.
-    // Literal '/sw.js?v=11' kept for verify-release.mjs regex.
-    navigator.serviceWorker.register('sw.js?v=11').then(function(reg) {
+    // Literal '/sw.js?v=12' kept for verify-release.mjs regex.
+    navigator.serviceWorker.register('sw.js?v=12').then(function(reg) {
       reg.addEventListener('updatefound', function() {
         var newWorker = reg.installing;
         if (newWorker) {

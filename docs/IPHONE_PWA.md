@@ -152,11 +152,14 @@ release is never affected. Changes are additive and iOS-gated:
 | `components/deep-lock/FocusShieldUnavailable.tsx` | Honest Android-only explainer |
 | `lib/ics.ts` | Calendar (.ics) export with `RRULE` + `VALARM` |
 | `lib/splash-screens.ts` | Generated device list (do not edit by hand) |
+| `scripts/brand-mark.mjs` | Single source of truth for the logo (tile + graduation glyph) |
+| `scripts/make-icons.mjs` | Regenerates every favicon / PWA / Apple icon from the brand mark |
 | `scripts/make-splash.mjs` | Regenerates `public/splash/*` and the list above |
 
-Regenerate launch screens after changing the app icon:
+Regenerate icons and launch screens after changing the brand mark:
 
 ```bash
+node scripts/make-icons.mjs
 node scripts/make-splash.mjs
 ```
 

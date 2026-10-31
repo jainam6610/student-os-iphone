@@ -9,9 +9,10 @@
 // ─────────────────────────────────────────────────────────────
 
 import sharp from 'sharp'
-import { mkdir, writeFile, readFile } from 'node:fs/promises'
+import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { BRAND_INNER, BRAND_SIZE } from './brand-mark.mjs'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const OUT_DIR = path.join(ROOT, 'public', 'splash')
@@ -46,18 +47,13 @@ const DEVICES = [
   { slug: 'iphone-se', width: 375, height: 667, dpr: 2 },
 ]
 
-/** Pull the two glyph path `d` values straight out of the app icon. */
-async function readGlyphPaths() {
-  const svg = await readFile(path.join(ROOT, 'public', 'icon.svg'), 'utf8')
-  const paths = [...svg.matchAll(/<path[^>]*\sd="([^"]+)"/g)].map((m) => m[1])
-  if (paths.length < 2) throw new Error('Could not find glyph paths in public/icon.svg')
-  return paths
-}
-
-function buildSvg(paths, pixelWidth, pixelHeight) {
-  // The glyph lives in a 180×180 box; scale it to ~30% of the short edge.
-  const box = Math.round(Math.min(pixelWidth, pixelHeight) * 0.26)
-  const scale = box / 180
+/**
+ * Build one iOS startup screen: dark plate + violet glow + the brand mark
+ * centred at ~28% of the short edge (the mark carries its own tile).
+ */
+function buildSvg(pixelWidth, pixelHeight) {
+  const box = Math.round(Math.min(pixelWidth, pixelHeight) * 0.28)
+  const scale = box / BRAND_SIZE
   const offsetX = (pixelWidth - box) / 2
   const offsetY = (pixelHeight - box) / 2
 
@@ -71,8 +67,8 @@ function buildSvg(paths, pixelWidth, pixelHeight) {
   </defs>
   <rect width="${pixelWidth}" height="${pixelHeight}" fill="${BACKGROUND}"/>
   <rect width="${pixelWidth}" height="${pixelHeight}" fill="url(#glow)"/>
-  <g transform="translate(${offsetX} ${offsetY}) scale(${scale})" fill="#ffffff">
-    ${paths.map((d) => `<path d="${d}"/>`).join('\n    ')}
+  <g transform="translate(${offsetX} ${offsetY}) scale(${scale})">
+    ${BRAND_INNER}
   </g>
 </svg>`
 }
@@ -82,13 +78,12 @@ function mediaQuery({ width, height, dpr }) {
 }
 
 async function main() {
-  const paths = await readGlyphPaths()
   await mkdir(OUT_DIR, { recursive: true })
 
   for (const device of DEVICES) {
     const pixelWidth = device.width * device.dpr
     const pixelHeight = device.height * device.dpr
-    const svg = buildSvg(paths, pixelWidth, pixelHeight)
+    const svg = buildSvg(pixelWidth, pixelHeight)
     const target = path.join(OUT_DIR, `${device.slug}.png`)
 
     await sharp(Buffer.from(svg))

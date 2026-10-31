@@ -4,17 +4,41 @@ import { useCallback, useEffect, useState } from 'react'
 import { Check, Copy, QrCode, Share2, Smartphone } from 'lucide-react'
 import { Card } from '@/components/ui/glass-card'
 import { Button } from '@/components/ui/button'
-import { getIOSInstallState } from '@/lib/platform'
+import { getIOSInstallState, isNativeApp } from '@/lib/platform'
+
+/** Canonical web build — the address advertised in the README, reachable from any phone. */
+const PUBLIC_SITE_URL = 'https://jainam6610.github.io/student-os-iphone/'
+
+/**
+ * The URL to put in the link box and inside the QR code.
+ *
+ * `window.location.origin` alone is not enough:
+ *   - the Android shell runs on https://localhost, which means nothing on
+ *     another phone;
+ *   - on GitHub Pages the app is served from /<repo>/, so an origin-only
+ *     link drops the path and lands on a 404.
+ */
+function resolveAppUrl(): string {
+  if (typeof window === 'undefined') return ''
+  if (isNativeApp() || window.location.protocol === 'file:') return PUBLIC_SITE_URL
+
+  const configuredBase = process.env.NEXT_PUBLIC_BASE_PATH || ''
+  const path = (configuredBase || window.location.pathname)
+    .replace(/\/index\.html?$/i, '/')
+    .replace(/^([^/])/, '/$1')
+
+  return window.location.origin + (path.endsWith('/') ? path : `${path}/`)
+}
 
 /**
  * Share card: the one place to grab the app URL or point a friend's camera at
- * the QR code. The QR is rendered lazily from `window.location.origin`, so it
- * always matches whatever domain the app is actually deployed on — no build
- * step and no chance of a stale hardcoded link.
+ * the QR code. The QR is rendered lazily from the resolved app URL, so it
+ * always matches the address the app is actually deployed on — base path
+ * included — with no build step and no stale hardcoded link.
  */
 export function ShareAppCard() {
   const [qr, setQr] = useState<string | null>(null)
-  const [url] = useState(() => (typeof window === 'undefined' ? '' : window.location.origin + '/'))
+  const [url] = useState(resolveAppUrl)
   const [copied, setCopied] = useState(false)
   const [canShare] = useState(
     () => typeof navigator !== 'undefined' && typeof navigator.share === 'function',

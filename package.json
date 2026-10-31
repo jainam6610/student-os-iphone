@@ -44,6 +44,8 @@
     "check:types": "tsc --noEmit",
     "check:lint": "eslint .",
     "verify": "node scripts/verify-release.mjs",
+    "icons": "node scripts/make-icons.mjs",
+    "splash": "node scripts/make-splash.mjs",
     "cap:sync": "pnpm build && npx cap sync android",
     "android:open": "npx cap open android",
     "android:build": "pnpm build && npx cap sync android"
