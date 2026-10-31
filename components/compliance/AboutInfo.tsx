@@ -1,7 +1,7 @@
 'use client'
 
 import { motion } from 'framer-motion'
-import { X, Sparkles, User, Instagram, Shield, CheckCircle } from 'lucide-react'
+import { X, Sparkles, User, Instagram, Shield, CheckCircle, Github } from 'lucide-react'
 
 export function AboutInfo({ onClose }: { onClose: () => void }) {
   return (
@@ -65,6 +65,10 @@ export function AboutInfo({ onClose }: { onClose: () => void }) {
               <span className="text-xs text-muted-foreground">Data storage</span>
               <span className="text-xs font-medium text-foreground">Local only</span>
             </div>
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-muted-foreground">License</span>
+              <span className="text-xs font-medium text-foreground">MIT</span>
+            </div>
           </div>
 
           <div className="rounded-xl bg-surface-container-low border border-border/50 p-4">
@@ -84,6 +88,36 @@ export function AboutInfo({ onClose }: { onClose: () => void }) {
               <Instagram className="w-3.5 h-3.5" />
               @thats.jainam
             </a>
+          </div>
+
+          <div className="rounded-xl bg-surface-container-low border border-border/50 p-4">
+            <div className="flex items-center gap-2 mb-1.5">
+              <Github className="w-4 h-4 text-primary" />
+              <h4 className="text-sm font-semibold text-foreground">Free &amp; open source</h4>
+            </div>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Student OS is open source under the MIT license. Read the code, report a bug, or build
+              your own version — no account, no tracking, no paywall.
+            </p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <a
+                href="https://github.com/jainam6610/student-os-iphone"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-secondary hover:bg-secondary/80 transition-colors text-xs text-muted-foreground hover:text-foreground"
+              >
+                <Github className="w-3.5 h-3.5" />
+                Source on GitHub
+              </a>
+              <a
+                href="https://github.com/jainam6610/student-os-iphone/blob/iphone-pwa/LICENSE"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-secondary hover:bg-secondary/80 transition-colors text-xs text-muted-foreground hover:text-foreground"
+              >
+                MIT license
+              </a>
+            </div>
           </div>
 
           <div className="rounded-xl bg-green-500/5 border border-green-500/20 p-4 text-center">

@@ -193,8 +193,11 @@ export function IOSInstallPrompt() {
               </ol>
             )}
 
-            <div className="mt-3 flex items-center justify-end gap-2">
-              <Button size="sm" onClick={dismiss} className="min-h-[44px]">
+            <div className="mt-3 flex items-center justify-between gap-3">
+              <p className="text-[10px] leading-snug text-muted-foreground/70">
+                Free · No account · Open source
+              </p>
+              <Button size="sm" onClick={dismiss} className="min-h-[44px] shrink-0">
                 {needsSafari ? 'Got it' : 'Got it — I\'ll add it'}
               </Button>
             </div>

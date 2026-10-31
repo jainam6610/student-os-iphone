@@ -14,6 +14,7 @@ import {
   Disc3, Volume2, Repeat, Type, Palette, Layout, Shield, Settings2, ChevronDown, Bell,
   Calendar, AlarmClock, Activity, Palette as PaletteIcon, FileText, Info, Terminal,
   Plus, Check, Music2, ListChecks, AlertTriangle, GraduationCap, RefreshCw, Smartphone,
+  Github, ExternalLink,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { ProfileAvatar } from './profile-avatar'
@@ -590,6 +591,17 @@ export function Settings() {
           <SettingRow icon={<Eye className="w-4 h-4" />} title="Accessibility Disclosure" description="Deep Lock accessibility usage" onClick={() => setShowAccessibilityDisclosure(true)} />
           <SettingRow icon={<Info className="w-4 h-4" />} title="Permissions" description="Required app permissions" onClick={() => setShowPermissionsInfo(true)} />
           <SettingRow icon={<BookOpen className="w-4 h-4" />} title="Licenses" description="Open source licenses" onClick={() => setShowLicenses(true)} />
+          <SettingRow icon={<Github className="w-4 h-4" />} title="Source code" description="Free & open source on GitHub · MIT">
+            <a
+              href="https://github.com/jainam6610/student-os-iphone"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Open the Student OS source code on GitHub"
+              className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary/50 hover:text-foreground transition-colors"
+            >
+              <ExternalLink className="w-4 h-4" />
+            </a>
+          </SettingRow>
           <SettingRow icon={<Terminal className="w-4 h-4" />} title="Debug Session" description="Live focus timer diagnostic" onClick={() => setActiveView('diagnostic')} />
           <SettingRow icon={<Info className="w-4 h-4" />} title="About" description="App version and credits" onClick={() => setShowAboutInfo(true)} isLast />
         </Card>

@@ -5,6 +5,10 @@ Store listing and no `.ipa` — friends open one link and add it to their home
 screen. This document covers installing it, what works, and what cannot work on
 iOS.
 
+The app is **free and open source under the MIT license**
+([source](https://github.com/jainam6610/student-os-iphone)) — there is no
+account, no backend and nothing to buy.
+
 ---
 
 ## Install (send this to friends)
@@ -88,13 +92,37 @@ limitation instead of showing controls that cannot work. Apple's own
 
 ## Deploying
 
+**Live app:** <https://jainam6610.github.io/student-os-iphone/>
+
 The app is a static export (`next.config.mjs` → `output: 'export'`), so any
-static host works. Cloudflare Pages is preconfigured via `public/_headers` and
+static host works.
+
+### GitHub Pages (how this fork ships)
+
+The `iphone-pwa` branch deploys automatically through
+[`.github/workflows/pages.yml`](../.github/workflows/pages.yml): it runs
+`pnpm build`, rewrites the manifest and service worker for the `/<repo>/` base
+path, and uploads `out/`. One-time setup: **Settings → Pages → Source: GitHub
+Actions**.
+
+```bash
+pnpm install
+GITHUB_PAGES_REPO=student-os-iphone pnpm build   # basePath + assetPrefix
+node scripts/make-manifest.mjs
+node scripts/make-sw.mjs
+```
+
+`GITHUB_PAGES_REPO` must match the repository name exactly. Push to
+`iphone-pwa`, or trigger the workflow manually from the Actions tab.
+
+### Cloudflare Pages (alternative)
+
+Cloudflare Pages is preconfigured via `public/_headers` and
 `public/_redirects`.
 
 ```bash
 pnpm install
-pnpm build          # emits out/
+pnpm build          # emits out/ (no GITHUB_PAGES_REPO → root domain)
 ```
 
 Cloudflare Pages settings:

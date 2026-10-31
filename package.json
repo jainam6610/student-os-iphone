@@ -5,13 +5,13 @@
   "description": "Offline-first, privacy-first study workspace — focus timer, tasks, habits, planner and analytics in one calm app.",
   "license": "MIT",
   "author": "Jainam Karnawat <jainamkarnawat8@gmail.com>",
-  "homepage": "https://play.google.com/store/apps/details?id=com.jainam.studentos",
+  "homepage": "https://jainam6610.github.io/student-os-iphone/",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/jainam6610/student-os.git"
+    "url": "git+https://github.com/jainam6610/student-os-iphone.git"
   },
   "bugs": {
-    "url": "https://github.com/jainam6610/student-os/issues"
+    "url": "https://github.com/jainam6610/student-os-iphone/issues"
   },
   "keywords": [
     "student",
@@ -27,7 +27,9 @@
     "pwa",
     "offline-first",
     "capacitor",
-    "android"
+    "android",
+    "ios",
+    "iphone"
   ],
   "engines": {
     "node": ">=20"
