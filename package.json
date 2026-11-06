@@ -51,9 +51,9 @@
     "android:build": "pnpm build && npx cap sync android"
   },
   "dependencies": {
-    "@capacitor/android": "^8.4.1",
-    "@capacitor/app": "^8.1.0",
-    "@capacitor/core": "^8.4.1",
+    "@capacitor/android": "^8.6.0",
+    "@capacitor/app": "^8.1.2",
+    "@capacitor/core": "^8.6.0",
     "@gsap/react": "^2.1.2",
     "clsx": "^2.1.1",
     "date-fns": "^4.3.0",
